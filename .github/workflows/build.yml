@@ -3,8 +3,8 @@ name: Build Claude Tabs
 on:
   push:
     tags:
-      - 'v*'          # dispara ao criar uma tag tipo v1.0.0
-  workflow_dispatch:  # permite rodar manualmente pelo GitHub
+      - "v*"
+  workflow_dispatch:
 
 jobs:
 
@@ -23,6 +23,8 @@ jobs:
 
       - name: Build Windows
         run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artefatos Windows
         uses: actions/upload-artifact@v4
@@ -47,6 +49,8 @@ jobs:
 
       - name: Build Linux
         run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artefatos Linux
         uses: actions/upload-artifact@v4
@@ -74,10 +78,7 @@ jobs:
       - name: Build Mac
         run: npm run build:mac
         env:
-          # Se tiver Apple Developer cert, coloca nos secrets do GitHub
-          # CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
-          # CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          # Se não tiver, desabilita a assinatura:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artefatos Mac
@@ -90,11 +91,10 @@ jobs:
           retention-days: 7
 
   # ─── RELEASE ───────────────────────────────────────────────────
-  # Cria um release no GitHub com todos os arquivos quando tem tag
   release:
     needs: [build-windows, build-linux, build-mac]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, "refs/tags/")
     permissions:
       contents: write
 
@@ -122,3 +122,5 @@ jobs:
         with:
           files: release/**/*
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
