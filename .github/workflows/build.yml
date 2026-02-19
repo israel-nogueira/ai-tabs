@@ -22,7 +22,7 @@ jobs:
         run: npm install
 
       - name: Build Windows
-        run: npm run build:win
+        run: npm run build:win -- -p never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -48,7 +48,7 @@ jobs:
         run: npm install
 
       - name: Build Linux
-        run: npm run build:linux
+        run: npm run build:linux -- -p never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -76,7 +76,7 @@ jobs:
         run: npm install
 
       - name: Build Mac
-        run: npm run build:mac
+        run: npm run build:mac -- -p never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false

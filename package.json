@@ -95,8 +95,7 @@
           ]
         }
       ]
-    },
-    "publish": "never"
+    }
   },
   "author": {
     "name": "Israel Nogueira",
