@@ -20,7 +20,11 @@
     "files": [
       "main.js",
       "index.html",
-      "assets/**/*"
+      "assets/**/*",
+      "!Partitions/**",
+      "!dist/**",
+      "!node_modules/**",
+      "!**/*.map"
     ],
     "directories": {
       "output": "dist"
