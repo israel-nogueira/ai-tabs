@@ -1,0 +1,2345 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Tabs</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a25;
+    --border: #2a2a3a;
+    --accent: #7c5cfc;
+    --accent2: #c084fc;
+    --text: #e2e2f0;
+    --text-dim: #6b6b8a;
+    --tab-h: 42px;
+    --bar-h: 38px;
+    --titlebar-h: 36px;
+    --danger: #fc5c7c;
+    --green: #4ade80;
+    --panel-w: 280px;
+  }
+
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; user-select: none; }
+
+  /* TITLEBAR */
+  #titlebar {
+    height: var(--titlebar-h);
+    background: var(--bg);
+    display: flex; align-items: center;
+    padding: 0 12px;
+    -webkit-app-region: drag;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+    position: relative; z-index: 100;
+  }
+  .win-controls { display: flex; gap: 6px; -webkit-app-region: no-drag; margin-right: 8px; }
+  .win-btn { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; transition: filter 0.15s; }
+  .win-btn:hover { filter: brightness(1.3); }
+  .win-btn.close { background: #ff5f57; }
+  .win-btn.min   { background: #febc2e; }
+  .win-btn.max   { background: #28c840; }
+  .app-logo {
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.08em;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    -webkit-app-region: drag; flex: 1;
+  }
+
+  /* TABBAR */
+  #tabbar {
+    height: var(--tab-h);
+    background: var(--surface);
+    display: flex; align-items: center;
+    padding: 0 8px; gap: 4px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto; overflow-y: hidden;
+    position: relative; z-index: 90;
+    scrollbar-width: none;
+  }
+  #tabbar::-webkit-scrollbar { display: none; }
+  .tab {
+    display: flex; align-items: center; gap: 7px;
+    padding: 0 10px 0 12px;
+    height: 30px; border-radius: 8px;
+    background: transparent; border: 1px solid transparent;
+    cursor: default; transition: all 0.15s;
+    white-space: nowrap; flex-shrink: 0;
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--text-dim); min-width: 120px; max-width: 200px;
+  }
+  .tab:hover { background: var(--surface2); border-color: var(--border); color: var(--text); }
+  .tab.active {
+    background: var(--surface2); border-color: var(--accent); color: var(--text);
+    box-shadow: 0 0 0 1px rgba(124,92,252,0.15), inset 0 0 12px rgba(124,92,252,0.05);
+  }
+  .tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--text-dim); transition: background 0.15s; }
+  .tab.active   .tab-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .tab.credits-ok .tab-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .tab.credits-out .tab-dot { background: var(--danger) !important; box-shadow: 0 0 6px var(--danger) !important; }
+
+  /* CONTEXT MENU */
+  #ctx-menu {
+    position: fixed; z-index: 9999;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    display: none; min-width: 160px;
+  }
+  #ctx-menu.open { display: block; }
+  .ctx-item {
+    padding: 7px 12px; border-radius: 5px;
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--text); cursor: default;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.1s;
+  }
+  .ctx-item:hover { background: var(--surface); }
+  .ctx-item.danger { color: var(--danger); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+  .tab-countdown {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    color: var(--danger); opacity: 0.85;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .tab.typing .tab-dot {
+    background: var(--accent2) !important;
+    box-shadow: 0 0 6px var(--accent2) !important;
+    animation: pulse-dot 1s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.7); }
+  }
+  .tab-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .tab-label-input {
+    background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px;
+    width: 100%; cursor: default;
+  }
+  .tab-close {
+    width: 16px; height: 16px; border-radius: 4px;
+    background: transparent; border: none; color: var(--text-dim);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; transition: all 0.1s; flex-shrink: 0; line-height: 1;
+  }
+  .tab-close:hover { background: rgba(252,92,124,0.2); color: var(--danger); }
+  #btn-new-tab {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: transparent; border: 1px dashed var(--border);
+    color: var(--text-dim); cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  #btn-new-tab:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+  /* ADDRESSBAR */
+  #addressbar {
+    height: var(--bar-h); background: var(--bg);
+    display: flex; align-items: center;
+    padding: 0 10px; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-btn {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .nav-btn:hover { background: var(--surface2); color: var(--text); }
+  #url-display {
+    flex: 1; height: 26px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 0 10px; font-family: 'DM Mono', monospace; font-size: 11px;
+    color: var(--text-dim); display: flex; align-items: center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .profile-badge {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    color: var(--accent2); background: rgba(192,132,252,0.1);
+    border: 1px solid rgba(192,132,252,0.25);
+    border-radius: 4px; padding: 2px 7px; white-space: nowrap; flex-shrink: 0;
+  }
+  #btn-files {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s; flex-shrink: 0;
+  }
+  #btn-files:hover { background: var(--surface2); color: var(--text); }
+  #btn-files.active { border-color: var(--accent); color: var(--accent); background: rgba(124,92,252,0.08); }
+
+  /* WEBVIEW CONTAINER */
+  #webview-container {
+    position: absolute;
+    top: calc(var(--titlebar-h) + var(--tab-h) + var(--bar-h));
+    left: 0; right: 0; bottom: 0;
+    transition: right 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  #webview-container.shifted { right: var(--panel-w); }
+
+  webview {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%; height: 100%; display: none;
+  }
+  webview.active { display: flex; }
+
+  /* EMPTY STATE */
+  #empty-state {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px; color: var(--text-dim);
+  }
+  #empty-state h2 {
+    font-size: 28px; font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  #empty-state p { font-size: 14px; font-family: 'DM Mono', monospace; }
+  #empty-state .shortcut {
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 16px;
+  }
+  #empty-state .shortcut kbd {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 6px; font-size: 11px;
+  }
+
+  /* FILE PANEL */
+  #file-panel {
+    position: absolute;
+    top: calc(var(--titlebar-h) + var(--tab-h) + var(--bar-h));
+    right: 0; bottom: 0;
+    width: 0; overflow: hidden;
+    background: var(--surface);
+    border-left: 1px solid transparent;
+    transition: width 0.25s cubic-bezier(.4,0,.2,1), border-color 0.25s;
+    z-index: 80;
+  }
+  #file-panel.open { width: var(--panel-w); border-left-color: var(--border); }
+  #file-panel-inner {
+    width: var(--panel-w); height: 100%;
+    display: flex; flex-direction: column;
+    padding: 12px 10px; gap: 10px; overflow: hidden;
+  }
+  .panel-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    color: var(--text-dim); text-transform: uppercase;
+    padding: 0 2px; flex-shrink: 0;
+  }
+  #drop-zone {
+    border: 1.5px dashed var(--border); border-radius: 8px;
+    padding: 16px 10px; text-align: center;
+    color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 11px;
+    transition: all 0.15s; flex-shrink: 0; line-height: 1.8;
+  }
+  #drop-zone.dragover { border-color: var(--accent); background: rgba(124,92,252,0.07); color: var(--accent); }
+  #drop-zone .dz-icon { display: block; font-size: 20px; margin-bottom: 2px; }
+  #file-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .file-item {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 8px; border-radius: 7px;
+    background: var(--surface2); border: 1px solid var(--border);
+    cursor: grab; transition: border-color 0.12s;
+  }
+  .file-item:hover { border-color: var(--accent); }
+  .file-item[dragging] { opacity: 0.5; }
+  .file-icon { font-size: 15px; flex-shrink: 0; }
+  .file-info { flex: 1; overflow: hidden; }
+  .file-name { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-size { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-dim); }
+  .file-del {
+    width: 18px; height: 18px; border-radius: 4px;
+    background: transparent; border: none; color: var(--text-dim);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; transition: all 0.1s; flex-shrink: 0; opacity: 0;
+  }
+  .file-item:hover .file-del { opacity: 1; }
+  .file-del:hover { background: rgba(252,92,124,0.2); color: var(--danger); }
+  .file-list-empty { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-dim); text-align: center; padding: 20px 0; }
+
+
+  /* DRAG OVERLAY — captura drop sobre a webview */
+  #drag-overlay {
+    display: none;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 9999;
+    background: rgba(124,92,252,0.12);
+    border: 2px dashed var(--accent);
+    border-radius: 4px;
+    pointer-events: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  #drag-overlay.active {
+    display: flex;
+    pointer-events: all;
+  }
+
+  .file-item.selected {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.1);
+  }
+  .file-check {
+    width: 15px; height: 15px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    transition: all 0.1s;
+    cursor: pointer;
+    color: transparent;
+  }
+  .file-item.selected .file-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  #file-actions {
+    display: none;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  #file-actions.visible { display: flex; }
+  .action-btn {
+    flex: 1;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.1s;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* NEW TAB POPUP */
+  #new-tab-popup {
+    position: fixed; z-index: 9999;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    display: none;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 180px;
+  }
+  #new-tab-popup.open { display: flex; }
+  .ai-option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; border-radius: 8px;
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--text); cursor: pointer;
+    transition: background 0.12s, transform 0.1s;
+    border: 1px solid transparent;
+    -webkit-app-region: no-drag;
+  }
+  .ai-option:hover { background: var(--surface); transform: translateX(2px); }
+  .ai-option:active { transform: translateX(4px); }
+  .ai-option .ai-icon {
+    width: 22px; height: 22px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0;
+  }
+  .ai-option.claude .ai-icon { background: rgba(124,92,252,0.2); color: #a78bfa; }
+  .ai-option.claude:hover { border-color: rgba(124,92,252,0.35); }
+  .ai-option.gpt .ai-icon { background: rgba(16,185,129,0.18); color: #34d399; }
+  .ai-option.gpt:hover { border-color: rgba(16,185,129,0.35); }
+  .ai-option.gemini .ai-icon { background: rgba(59,130,246,0.18); color: #60a5fa; }
+  .ai-option.gemini:hover { border-color: rgba(59,130,246,0.35); }
+  .ai-option .ai-label { flex: 1; }
+  .ai-option .ai-shortcut { font-size: 10px; color: var(--text-dim); }
+  #new-tab-popup .popup-title {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 0.08em; padding: 4px 14px 2px;
+  }
+
+  /* TAB DRAG & DROP */
+  .tab.dragging { opacity: 0.35; pointer-events: none; }
+  .tab.drag-over-group {
+    box-shadow: 0 0 0 2px var(--group-color, var(--accent2)), inset 0 0 12px rgba(192,132,252,0.12) !important;
+    border-color: var(--group-color, var(--accent2)) !important;
+  }
+  .tab-drop-indicator {
+    position: absolute; top: 4px; bottom: 4px;
+    width: 2px; background: var(--accent);
+    border-radius: 2px; pointer-events: none;
+    box-shadow: 0 0 6px var(--accent);
+    z-index: 200; display: none;
+  }
+  .tab-drop-indicator.visible { display: block; }
+
+  /* ── TAB GROUP WRAPPER ──────────────────────────────────────────
+   * Estrutura no DOM:
+   *   <div class="tab-group-wrapper">          ← container com borda
+   *     <div class="tab-group-label">…</div>   ← "grupo1 ▾"
+   *     <div class="tab-group-tabs">           ← área das abas
+   *       <div class="tab in-group">…</div>
+   *       <div class="tab in-group">…</div>
+   *     </div>
+   *   </div>
+   * ──────────────────────────────────────────────────────────── */
+  .tab-group-wrapper {
+    display: flex; align-items: center;
+    flex-shrink: 0;
+    border: 1px solid var(--group-border, rgba(255,255,255,0.13));
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+    padding: 3px 4px 3px 0;
+    gap: 0;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+    cursor: grab;
+  }
+  .tab-group-wrapper.dragging { opacity: 0.35; pointer-events: none; }
+  .tab-group-wrapper.drag-over-wrapper {
+    border-color: var(--group-color, var(--accent2)) !important;
+    background: rgba(124,92,252,0.07) !important;
+  }
+  .tab-group-tabs {
+    display: flex; align-items: center; gap: 3px;
+    flex-shrink: 0;
+  }
+  .tab-group-tabs.collapsed-tabs { display: none; }
+
+  /* Label dentro do wrapper */
+  .tab-group-label {
+    display: flex; align-items: center; gap: 5px;
+    padding: 0 8px 0 10px;
+    height: 28px; border-radius: 8px;
+    background: transparent; border: none;
+    cursor: default; transition: background 0.15s;
+    white-space: nowrap; flex-shrink: 0;
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    color: var(--text-dim);
+  }
+  .tab-group-label:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+
+  /* Separador vertical entre label e abas */
+  .tab-group-sep {
+    width: 1px; height: 18px;
+    background: rgba(255,255,255,0.1);
+    flex-shrink: 0; margin: 0 4px;
+  }
+  /* Oculta separador quando grupo colapsado */
+  .tab-group-wrapper.collapsed .tab-group-sep { display: none; }
+
+  .tab-group-color-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .tab-group-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+  .tab-group-chevron { font-size: 9px; color: var(--text-dim); transition: transform 0.15s; }
+  .tab-group-wrapper.collapsed .tab-group-chevron { transform: rotate(-90deg); }
+
+  /* Group ctx menu */
+  #group-ctx-menu {
+    position: fixed; z-index: 9999;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    display: none; min-width: 170px;
+  }
+  #group-ctx-menu.open { display: block; }
+
+  /* Abas dentro do grupo: menores, sem borda externa forte */
+  .tab.in-group {
+    min-width: 100px; max-width: 150px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  .tab.in-group.group-hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- TITLEBAR -->
+<div id="titlebar">
+  <div class="win-controls">
+    <button class="win-btn close" onclick="ipcRenderer.send('window-close')" title="Fechar"></button>
+    <button class="win-btn min"   onclick="ipcRenderer.send('window-minimize')" title="Minimizar"></button>
+    <button class="win-btn max"   onclick="ipcRenderer.send('window-toggle-max')" title="Maximizar"></button>
+  </div>
+  <span class="app-logo">⬡ AI TABS</span>
+</div>
+
+<!-- TABBAR -->
+<div id="tabbar">
+  <div id="tab-drop-indicator" class="tab-drop-indicator"></div>
+  <button id="btn-new-tab" onclick="toggleNewTabPopup(event)" title="Nova aba (Ctrl+T)">+</button>
+</div>
+
+<!-- NEW TAB POPUP -->
+<div id="new-tab-popup">
+  <div class="popup-title">Abrir nova aba</div>
+  <div class="ai-option claude" onclick="createTab(null, 'https://claude.ai'); closeNewTabPopup();">
+    <span class="ai-icon">⬡</span>
+    <span class="ai-label">Claude</span>
+    <span class="ai-shortcut">Ctrl+T</span>
+  </div>
+  <div class="ai-option gpt" onclick="createTab(null, 'https://chatgpt.com'); closeNewTabPopup();">
+    <span class="ai-icon">◈</span>
+    <span class="ai-label">ChatGPT</span>
+    <span class="ai-shortcut"></span>
+  </div>
+  <div class="ai-option gemini" onclick="createTab(null, 'https://gemini.google.com'); closeNewTabPopup();">
+    <span class="ai-icon">✦</span>
+    <span class="ai-label">Gemini</span>
+    <span class="ai-shortcut"></span>
+  </div>
+</div>
+
+<!-- ADDRESS BAR -->
+<div id="addressbar">
+  <button class="nav-btn" id="btn-back"    onclick="navBack()"    title="Voltar">‹</button>
+  <button class="nav-btn" id="btn-forward" onclick="navForward()" title="Avançar">›</button>
+  <button class="nav-btn" id="btn-reload"  onclick="navReload()"  title="Recarregar">↻</button>
+  <div id="url-display">claude.ai</div>
+  <span class="profile-badge" id="profile-badge">—</span>
+  <button id="btn-files" onclick="togglePanel()" title="Biblioteca de arquivos">📎</button>
+
+</div>
+
+<!-- FILE PANEL -->
+<div id="file-panel">
+  <div id="file-panel-inner">
+    <div class="panel-title">📁 Biblioteca</div>
+    <div id="drop-zone">
+      <span class="dz-icon">⬇</span>
+      Arraste arquivos aqui
+    </div>
+    <div id="file-actions">
+      <button class="action-btn" id="btn-attach-selected" onclick="attachSelected()">⬇ Anexar selecionados</button>
+      <button class="action-btn danger" id="btn-del-selected" onclick="deleteSelected()">× Remover</button>
+    </div>
+    <div id="file-list"></div>
+  </div>
+</div>
+
+<!-- CONTEXT MENU (tab) -->
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-color">🎨 Alterar cor da guia</div>
+  <div class="ctx-item" id="ctx-rename">✏️ Renomear guia</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-toggle-limit">🔴 Marcar como limitado</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-close">✕ Fechar guia</div>
+</div>
+
+<!-- CONTEXT MENU (group) -->
+<div id="group-ctx-menu">
+  <div class="ctx-item" id="gctx-rename">✏️ Renomear grupo</div>
+  <div class="ctx-item" id="gctx-color">🎨 Alterar cor do grupo</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="gctx-ungroup">↔ Desagrupar</div>
+  <div class="ctx-item danger" id="gctx-close-all">✕ Fechar todas as abas</div>
+</div>
+<input type="color" id="color-picker" style="position:fixed;opacity:0;pointer-events:none;width:0;height:0;">
+<input type="color" id="group-color-picker" style="position:fixed;opacity:0;pointer-events:none;width:0;height:0;">
+
+<!-- WEBVIEWS -->
+<div id="webview-container">
+  <div id="drag-overlay"></div>
+  <div id="empty-state">
+    <h2>AI Tabs</h2>
+    <p>Claude · ChatGPT · Gemini — sessões isoladas por perfil</p>
+    <div class="shortcut">Pressione <kbd>Ctrl</kbd>+<kbd>T</kbd> para nova aba</div>
+  </div>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+const path   = require('path');
+const fs     = require('fs');
+const os     = require('os');
+
+// ---- STATE ----
+let tabs        = [];
+let activeTabId = null;
+let tabCounter  = 0;
+let panelOpen   = false;
+
+// Groups: { id, name, color, collapsed, tabIds[] }
+let groups       = [];
+let groupCounter = 0;
+
+// Arquivo de persistência da biblioteca
+const LIBRARY_PATH = path.join(os.homedir(), '.claude-tabs-library.json');
+const TABS_PATH    = path.join(os.homedir(), '.claude-tabs-sessions.json');
+
+const tabbar      = document.getElementById('tabbar');
+const btnNewTab   = document.getElementById('btn-new-tab');
+const container   = document.getElementById('webview-container');
+const emptyState  = document.getElementById('empty-state');
+const urlDisplay  = document.getElementById('url-display');
+const profileBadge= document.getElementById('profile-badge');
+const filePanel   = document.getElementById('file-panel');
+const fileList    = document.getElementById('file-list');
+const dropZone    = document.getElementById('drop-zone');
+const btnFiles    = document.getElementById('btn-files');
+const fileActions = document.getElementById('file-actions');
+
+let selectedFiles = new Set(); // paths selecionados
+
+function toggleSelect(filePath, itemEl) {
+  if (selectedFiles.has(filePath)) {
+    selectedFiles.delete(filePath);
+    itemEl.classList.remove('selected');
+  } else {
+    selectedFiles.add(filePath);
+    itemEl.classList.add('selected');
+  }
+  fileActions.classList.toggle('visible', selectedFiles.size > 0);
+}
+
+function clearSelection() {
+  selectedFiles.clear();
+  document.querySelectorAll('.file-item.selected').forEach(el => el.classList.remove('selected'));
+  fileActions.classList.remove('visible');
+}
+
+function attachSelected() {
+  for (const fp of selectedFiles) {
+    const file = library.find(f => f.path === fp);
+    if (file) injectFileToWebview(file.path, file.name, getMimeType(file.ext));
+  }
+  clearSelection();
+}
+
+function deleteSelected() {
+  library = library.filter(f => !selectedFiles.has(f.path));
+  saveLibrary();
+  clearSelection();
+  renderLibrary();
+}
+
+// ============================================================
+// DRAG → WEBVIEW INJECT
+// ============================================================
+
+function getMimeType(ext) {
+  const map = {
+    pdf: 'application/pdf',
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+    txt: 'text/plain', md: 'text/plain',
+    json: 'application/json', csv: 'text/csv',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    zip: 'application/zip',
+    mp4: 'video/mp4', mp3: 'audio/mpeg',
+  };
+  return map[ext?.toLowerCase()] || 'application/octet-stream';
+}
+
+function injectFileToWebview(filePath, fileName, mimeType) {
+  const wv = getActiveWebview();
+  if (!wv) return;
+
+  const fileData = Array.from(fs.readFileSync(filePath));
+
+  // Script injetado na webview: cria File, DataTransfer, dispara drop
+  const script = `
+(function() {
+  const bytes = new Uint8Array(${JSON.stringify(fileData)});
+  const blob  = new Blob([bytes], { type: '${mimeType}' });
+  const file  = new File([blob], '${fileName.replace(/'/g, "\\\'")}', { type: '${mimeType}' });
+
+  const dt = new DataTransfer();
+  dt.items.add(file);
+
+  // ── Gemini: abre menu → clica "Enviar arquivos" → injeta no input ──
+  const isGemini = location.hostname.includes('gemini.google.com');
+  if (isGemini) {
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          const inputs = [node, ...node.querySelectorAll('input[type="file"]')]
+            .filter(el => el.tagName === 'INPUT' && el.type === 'file');
+          for (const inp of inputs) {
+            observer.disconnect();
+            Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            inp.dispatchEvent(new Event('input',  { bubbles: true }));
+            // Dá focus no editor para o Angular fechar o menu naturalmente
+            setTimeout(() => {
+              const editor = document.querySelector('div.ql-editor[contenteditable="true"]');
+              if (editor) editor.focus();
+            }, 500);
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => observer.disconnect(), 8000);
+
+    // Passo 1: abre o menu de upload
+    const mainBtn = document.querySelector('button.upload-card-button');
+    if (!mainBtn) { observer.disconnect(); return 'gemini-no-btn'; }
+    mainBtn.click();
+
+    // Passo 2: clica em "Enviar arquivos" no menu popup
+    // NÃO fecha o menu aqui — o observer fecha após injetar o arquivo
+    setTimeout(() => {
+      const fileMenuBtn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
+      if (fileMenuBtn) {
+        fileMenuBtn.click();
+      } else {
+        observer.disconnect();
+      }
+    }, 300);
+
+    return 'gemini';
+  }
+
+  // ── ChatGPT: injeta direto no input[type=file] que já existe no DOM ──
+  const isGpt = location.hostname.includes('chatgpt.com') || location.hostname.includes('chat.openai.com');
+  if (isGpt) {
+    const inputs = document.querySelectorAll('input[type="file"]');
+    const inp = [...inputs].find(i => !i.id.includes('photo') && !i.id.includes('camera')) || inputs[0];
+    if (inp) {
+      Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new Event('input',  { bubbles: true }));
+      return 'chatgpt';
+    }
+    // Fallback: drop no container principal
+    const target = document.getElementById('thread-bottom-container') || document.body;
+    target.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    target.dispatchEvent(new DragEvent('dragover',  { bubbles: true, cancelable: true, dataTransfer: dt }));
+    target.dispatchEvent(new DragEvent('drop',      { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return 'chatgpt-drop';
+  }
+
+  // ── Claude: input[type=file] oculto ──
+  const input = document.querySelector('input[type="file"]');
+  if (input) {
+    Object.defineProperty(input, 'files', { value: dt.files, configurable: true });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input',  { bubbles: true }));
+    return 'input';
+  }
+
+  // ── Fallback genérico ──
+  const target = document.querySelector('[contenteditable="true"]')
+               || document.querySelector('main')
+               || document.body;
+
+  target.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: dt }));
+  target.dispatchEvent(new DragEvent('dragover',  { bubbles: true, dataTransfer: dt }));
+  target.dispatchEvent(new DragEvent('drop',      { bubbles: true, cancelable: true, dataTransfer: dt }));
+  return 'drop';
+})();
+  `;
+
+  wv.focus(); // garante foco na webview para editor.focus() funcionar dentro dela
+  wv.executeJavaScript(script).catch(err => console.error('inject error', err));
+}
+
+// Overlay que intercepta o drop sobre a webview
+const dragOverlay = document.getElementById('drag-overlay');
+
+function showDragOverlay() {
+  if (!window._draggingFilePath) return;
+  dragOverlay.textContent = '⬇ Solte para anexar';
+  dragOverlay.classList.add('active');
+}
+function hideDragOverlay() {
+  dragOverlay.classList.remove('active');
+}
+
+dragOverlay.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+
+dragOverlay.addEventListener('dragleave', (e) => {
+  // só esconde se saiu de vez (não entrou num filho)
+  if (!dragOverlay.contains(e.relatedTarget)) hideDragOverlay();
+});
+
+dragOverlay.addEventListener('drop', (e) => {
+  e.preventDefault();
+  hideDragOverlay();
+  if (window._draggingFiles && window._draggingFiles.length) {
+    for (const f of window._draggingFiles) {
+      injectFileToWebview(f.path, f.name, f.mime);
+    }
+    window._draggingFiles = null;
+    window._draggingFilePath = null;
+  }
+});
+
+
+
+// ============================================================
+// FILE LIBRARY
+// ============================================================
+
+let library = loadLibrary();
+
+function loadLibrary() {
+  try {
+    if (fs.existsSync(LIBRARY_PATH)) {
+      return JSON.parse(fs.readFileSync(LIBRARY_PATH, 'utf-8'));
+    }
+  } catch(e) {}
+  return [];
+}
+
+function saveLibrary() {
+  try { fs.writeFileSync(LIBRARY_PATH, JSON.stringify(library), 'utf-8'); } catch(e) {}
+}
+
+function getFileIcon(ext) {
+  const map = {
+    pdf: '📄', txt: '📝', md: '📝', doc: '📝', docx: '📝',
+    jpg: '🖼', jpeg: '🖼', png: '🖼', gif: '🖼', webp: '🖼', svg: '🖼',
+    js: '📦', ts: '📦', jsx: '📦', tsx: '📦',
+    py: '🐍', php: '🐘', html: '🌐', css: '🎨',
+    zip: '🗜', rar: '🗜', '7z': '🗜',
+    csv: '📊', xlsx: '📊', xls: '📊',
+    mp4: '🎬', mp3: '🎵', wav: '🎵',
+    json: '⚙', xml: '⚙', yaml: '⚙', yml: '⚙',
+  };
+  return map[ext?.toLowerCase()] || '📎';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function addFilesToLibrary(filePaths) {
+  let added = 0;
+  for (const fp of filePaths) {
+    if (library.find(f => f.path === fp)) continue; // já existe
+    try {
+      const stat = fs.statSync(fp);
+      library.unshift({
+        path: fp,
+        name: path.basename(fp),
+        ext:  path.extname(fp).replace('.', ''),
+        size: stat.size,
+        addedAt: Date.now()
+      });
+      added++;
+    } catch(e) {}
+  }
+  if (added) { saveLibrary(); renderLibrary(); if (!panelOpen) togglePanel(); }
+}
+
+function removeFromLibrary(fp) {
+  library = library.filter(f => f.path !== fp);
+  saveLibrary();
+  renderLibrary();
+}
+
+function renderLibrary() {
+  fileList.innerHTML = '';
+  if (!library.length) {
+    fileList.innerHTML = '<div class="file-list-empty">Nenhum arquivo ainda</div>';
+    return;
+  }
+  for (const file of library) {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.draggable = true;
+    item.dataset.path = file.path;
+    item.innerHTML = `
+      <span class="file-check">✓</span>
+      <span class="file-icon">${getFileIcon(file.ext)}</span>
+      <div class="file-info">
+        <div class="file-name" title="${file.path}">${file.name}</div>
+        <div class="file-size">${formatSize(file.size)}</div>
+      </div>
+      <button class="file-del" title="Remover da biblioteca">×</button>
+    `;
+
+    // Clique = toggle seleção
+    item.addEventListener('click', (e) => {
+      if (e.target.classList.contains('file-del')) return;
+      toggleSelect(file.path, item);
+    });
+
+    // Guarda o path sendo arrastado para injetar na webview ao soltar
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('text/plain', file.path);
+      // Se há selecionados, arrasta todos; senão, só este
+      if (selectedFiles.size > 0 && !selectedFiles.has(file.path)) {
+        // arrasta só este se não estava selecionado
+        window._draggingFiles = [{ path: file.path, name: file.name, mime: getMimeType(file.ext) }];
+      } else if (selectedFiles.size > 0) {
+        window._draggingFiles = library
+          .filter(f => selectedFiles.has(f.path))
+          .map(f => ({ path: f.path, name: f.name, mime: getMimeType(f.ext) }));
+      } else {
+        window._draggingFiles = [{ path: file.path, name: file.name, mime: getMimeType(file.ext) }];
+      }
+      // Compat com código antigo
+      window._draggingFilePath = window._draggingFiles[0].path;
+      window._draggingFileName = window._draggingFiles[0].name;
+      window._draggingFileMime = window._draggingFiles[0].mime;
+      setTimeout(showDragOverlay, 0);
+    });
+    item.addEventListener('dragend', () => {
+      hideDragOverlay();
+      setTimeout(() => { window._draggingFilePath = null; }, 200);
+    });
+
+    item.querySelector('.file-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFromLibrary(file.path);
+    });
+
+    fileList.appendChild(item);
+  }
+}
+
+// Drop zone — aceita arquivos arrastados de fora do app
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  dropZone.classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files).map(f => f.path);
+  if (files.length) addFilesToLibrary(files);
+});
+
+// Inicializa biblioteca
+renderLibrary();
+
+// ============================================================
+// CONTEXT MENU
+// ============================================================
+
+const ctxMenu    = document.getElementById('ctx-menu');
+const colorPicker= document.getElementById('color-picker');
+let ctxTabId     = null;
+
+function showCtxMenu(e, id) {
+  e.preventDefault();
+  ctxTabId = id;
+  const tab = tabs.find(t => t.id === id);
+  const isGrouped = tab && (tab.groupId !== null && tab.groupId !== undefined);
+  document.getElementById('ctx-color').style.display = isGrouped ? 'none' : '';
+  // Atualiza label do botão de limite
+  const isLimited = tab && tab.tabEl.classList.contains('credits-out');
+  document.getElementById('ctx-toggle-limit').textContent = isLimited
+    ? '✅ Desmarcar limite'
+    : '🔴 Marcar como limitado';
+  ctxMenu.style.left = e.clientX + 'px';
+  ctxMenu.style.top  = e.clientY + 'px';
+  ctxMenu.classList.add('open');
+}
+
+function hideCtxMenu() { ctxMenu.classList.remove('open'); }
+
+document.addEventListener('click', hideCtxMenu);
+document.addEventListener('contextmenu', (e) => {
+  // Se não clicou numa aba, fecha o menu
+  if (!e.target.closest('.tab')) hideCtxMenu();
+});
+
+document.getElementById('ctx-color').addEventListener('click', () => {
+  hideCtxMenu();
+  if (ctxTabId === null) return;
+  const tab = tabs.find(t => t.id === ctxTabId);
+  if (!tab) return;
+  // Abre color picker na posição da aba
+  const rect = tab.tabEl.getBoundingClientRect();
+  colorPicker.style.left = rect.left + 'px';
+  colorPicker.style.top  = rect.bottom + 'px';
+  colorPicker.value = tab.color || '#7c5cfc';
+  colorPicker.click();
+  colorPicker.oninput = null;
+  colorPicker.onchange = () => {
+    applyTabColor(ctxTabId, colorPicker.value);
+    saveTabs();
+  };
+});
+
+document.getElementById('ctx-rename').addEventListener('click', () => {
+  hideCtxMenu();
+  if (ctxTabId === null) return;
+  const tab = tabs.find(t => t.id === ctxTabId);
+  if (!tab) return;
+  const input = tab.tabEl.querySelector('.tab-label-input');
+  input.removeAttribute('readonly');
+  input.focus();
+  input.select();
+});
+
+document.getElementById('ctx-close').addEventListener('click', () => {
+  hideCtxMenu();
+  if (ctxTabId !== null) closeTab(ctxTabId);
+});
+
+document.getElementById('ctx-toggle-limit').addEventListener('click', () => {
+  hideCtxMenu();
+  if (ctxTabId === null) return;
+  const tab = tabs.find(t => t.id === ctxTabId);
+  if (!tab) return;
+  const isLimited = tab.tabEl.classList.contains('credits-out');
+  if (isLimited) {
+    // Desmarca
+    tab.tabEl.classList.remove('credits-out');
+    tab.tabEl.classList.add('credits-ok');
+    const countdownEl = tab.tabEl.querySelector('.tab-countdown');
+    if (countdownEl) countdownEl.style.display = 'none';
+    if (creditTimers[ctxTabId]) {
+      clearTimeout(creditTimers[ctxTabId].refreshTimer);
+      clearInterval(creditTimers[ctxTabId].countdownInterval);
+      delete creditTimers[ctxTabId];
+    }
+  } else {
+    // Marca como limitado (sem countdown — manual)
+    tab.tabEl.classList.remove('credits-ok');
+    tab.tabEl.classList.add('credits-out');
+  }
+});
+
+function applyTabColor(tabId, color) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.color = color; // sempre salva a cor individual
+  // Só aplica visualmente se a aba NÃO estiver num grupo
+  if (tab.groupId !== null && tab.groupId !== undefined) return;
+  _renderTabColor(tab, color);
+}
+
+function _renderTabColor(tab, color) {
+  tab.tabEl.style.setProperty('--tab-color', color || '');
+  tab.tabEl.style.borderColor = color || '';
+  const dot = tab.tabEl.querySelector('.tab-dot');
+  if (dot) {
+    dot.style.background = color || '';
+    dot.style.boxShadow  = color ? `0 0 6px ${color}` : '';
+  }
+}
+
+function clearTabColor(tab) {
+  // Remove cor visual (passa para padrão do sistema/grupo)
+  tab.tabEl.style.removeProperty('--tab-color');
+  tab.tabEl.style.borderColor = '';
+  const dot = tab.tabEl.querySelector('.tab-dot');
+  if (dot) { dot.style.background = ''; dot.style.boxShadow = ''; }
+}
+
+function restoreTabColor(tab) {
+  // Reaplica cor individual salva (ao desagrupar)
+  if (tab.color) _renderTabColor(tab, tab.color);
+  else clearTabColor(tab);
+}
+
+// ============================================================
+// PANEL TOGGLE
+// ============================================================
+
+function togglePanel() {
+  panelOpen = !panelOpen;
+  filePanel.classList.toggle('open', panelOpen);
+  container.classList.toggle('shifted', panelOpen);
+  btnFiles.classList.toggle('active', panelOpen);
+}
+
+// ============================================================
+// TABS PERSISTENCE
+// ============================================================
+
+function saveTabs() {
+  try {
+    const data = {
+      counter: tabCounter,
+      groupCounter,
+      activeId: activeTabId,
+      tabs: tabs.map(t => ({ id: t.id, label: t.label, partition: t.partition, url: t.url || 'https://claude.ai', color: t.color || null, groupId: (t.groupId != null) ? t.groupId : null })),
+      groups: groups.map(g => ({ id: g.id, name: g.name, color: g.color, collapsed: g.collapsed, tabIds: g.tabIds }))
+    };
+    fs.writeFileSync(TABS_PATH, JSON.stringify(data), 'utf-8');
+  } catch(e) {}
+}
+
+function restoreTabs() {
+  try {
+    if (!fs.existsSync(TABS_PATH)) { createTab(); return; }
+    const data = JSON.parse(fs.readFileSync(TABS_PATH, 'utf-8'));
+    if (!data.tabs || !data.tabs.length) { createTab(); return; }
+    const savedCounter = data.counter || 0;
+    groupCounter = data.groupCounter || 0;
+    tabCounter = 0; // será ignorado pois restore passa o id explícito
+    for (const t of data.tabs) createTab(t);
+    tabCounter = savedCounter; // garante que novas abas não conflitem
+    // Restore groups
+    if (data.groups && data.groups.length) {
+      for (const g of data.groups) {
+        groups.push({ ...g });
+        groupCounter = Math.max(groupCounter, g.id);
+      }
+      // Rebuild DOM for groups
+      rebuildTabbarFromState();
+    }
+    const toActivate = data.activeId || (tabs.length ? tabs[tabs.length - 1].id : null);
+    if (toActivate) activateTab(toActivate);
+  } catch(e) { console.error('restoreTabs error', e); }
+}
+
+// ============================================================
+// TABS
+// ============================================================
+
+function injectCreditObserver(webview) {
+  webview.executeJavaScript(`
+    (function() {
+      if (window.__creditObserver) window.__creditObserver.disconnect();
+
+      // Preserva resetTime já capturado entre reloads
+      if (!window.__creditResetTime) window.__creditResetTime = null;
+      if (typeof window.__creditLimited === 'undefined') window.__creditLimited = false;
+
+      function extractResetTime(text) {
+        // Pega todos os matches HH:MM e retorna o de maior hora (evita pegar "6:12" quando é "18:12")
+        const matches = [...text.matchAll(/\\b(\\d{1,2}):(\\d{2})\\b/g)];
+        if (!matches.length) return null;
+        // Prefere horários >= 12 (tarde/noite), senão pega o maior
+        const times = matches.map(m => ({ str: m[0], h: parseInt(m[1]), m: parseInt(m[2]) }));
+        const afternoon = times.filter(t => t.h >= 12);
+        const pool = afternoon.length ? afternoon : times;
+        pool.sort((a, b) => (b.h * 60 + b.m) - (a.h * 60 + a.m));
+        return pool[0].str;
+      }
+
+      function isCreditLimitReached() {
+        // Modal 100%
+        if (document.querySelector('[role="dialog"]')) return true;
+        // Alert band "sem mensagens" ou "limite"
+        const band = document.querySelector('[data-alert-band-wrapper]');
+        if (band) {
+          const t = band.textContent;
+          if (t.includes('sem') || t.includes('limite') || t.includes('90%') || t.includes('Upgrade')) return true;
+        }
+        return false;
+      }
+
+      function isTyping() {
+        // Durante streaming o viewBox é "0 0 100 N" onde N > 100
+        const svgs = document.querySelectorAll('.text-accent-brand svg');
+        for (const svg of svgs) {
+          const vb = svg.getAttribute('viewBox') || '';
+          if (vb !== '0 0 100 100' && vb.startsWith('0 0 100 ')) return true;
+        }
+        return false;
+      }
+
+      function check(addedNodes) {
+        // Tenta capturar resetTime do toast IMEDIATAMENTE quando ele aparece
+        if (addedNodes) {
+          addedNodes.forEach(node => {
+            if (!node.textContent) return;
+            const t = node.textContent;
+            if ((t.includes('limite') || t.includes('redefinidos') || t.includes('reset')) && !window.__creditResetTime) {
+              const rt = extractResetTime(t);
+              if (rt) window.__creditResetTime = rt;
+            }
+          });
+        }
+
+        const limited = isCreditLimitReached();
+        const typing  = isTyping();
+
+        if (!limited) {
+          window.__creditLimited = false;
+        } else {
+          window.__creditLimited = true;
+          if (!window.__creditResetTime) {
+            const rt = extractResetTime(document.body.textContent || '');
+            if (rt) window.__creditResetTime = rt;
+          }
+        }
+        window.__claudeTyping = typing;
+      }
+
+      // Roda imediatamente ao injetar
+      check(null);
+
+      window.__creditObserver = new MutationObserver((mutations) => {
+        const added = [];
+        mutations.forEach(m => m.addedNodes.forEach(n => added.push(n)));
+        check(added);
+      });
+      window.__creditObserver.observe(document.body, { childList: true, subtree: true });
+
+      window.__getCreditStatus = function() {
+        return {
+          limited: !!window.__creditLimited,
+          resetTime: window.__creditResetTime || null,
+          typing: !!window.__claudeTyping
+        };
+      };
+
+      window.__resetCreditStatus = function() {
+        window.__creditLimited = false;
+        window.__creditResetTime = null;
+      };
+    })();
+  `).catch(() => {});
+}
+
+function generatePartition(id) { return `persist:claude-profile-${id}`; }
+
+// Mapa de cores/labels por domínio
+const AI_CONFIGS = {
+  'claude.ai':          { label: 'Claude',  color: '#7c5cfc', dot: '#a78bfa' },
+  'chatgpt.com':        { label: 'ChatGPT', color: '#10b981', dot: '#34d399' },
+  'chat.openai.com':    { label: 'ChatGPT', color: '#10b981', dot: '#34d399' },
+  'gemini.google.com':  { label: 'Gemini',  color: '#3b82f6', dot: '#60a5fa' },
+};
+
+function getAiConfig(url) {
+  try {
+    const host = new URL(url).hostname;
+    for (const [domain, cfg] of Object.entries(AI_CONFIGS)) {
+      if (host === domain || host.endsWith('.' + domain)) return cfg;
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ---- POPUP NOVA ABA ----
+const newTabPopup = document.getElementById('new-tab-popup');
+
+function toggleNewTabPopup(e) {
+  e.stopPropagation();
+  if (newTabPopup.classList.contains('open')) {
+    closeNewTabPopup();
+    return;
+  }
+  const btn = document.getElementById('btn-new-tab');
+  const rect = btn.getBoundingClientRect();
+  newTabPopup.style.left = rect.left + 'px';
+  newTabPopup.style.top  = (rect.bottom + 4) + 'px';
+  newTabPopup.classList.add('open');
+}
+
+function closeNewTabPopup() {
+  newTabPopup.classList.remove('open');
+}
+
+document.addEventListener('click', (e) => {
+  if (!newTabPopup.contains(e.target)) closeNewTabPopup();
+});
+
+function createTab(restore = null, overrideUrl = null) {
+  tabCounter++;
+  const id        = restore ? restore.id        : tabCounter;
+  const partition = restore ? restore.partition : generatePartition(id);
+  const initUrl   = restore ? (restore.url || 'https://claude.ai') : (overrideUrl || 'https://claude.ai');
+  const aiCfg     = getAiConfig(initUrl);
+  const label     = restore ? restore.label     : (aiCfg ? aiCfg.label : 'Nova guia');
+  const initColor = restore ? (restore.color || null) : (aiCfg ? aiCfg.color : null);
+  const initGroupId = restore ? (restore.groupId || null) : null;
+
+  const tabEl = document.createElement('div');
+  tabEl.className = 'tab';
+  tabEl.dataset.id = id;
+  tabEl.draggable = true;
+  tabEl.innerHTML = `
+    <span class="tab-dot"></span>
+    <span class="tab-label">
+      <input class="tab-label-input" value="${label}" title="Duplo clique para renomear" readonly />
+    </span>
+    <span class="tab-countdown" style="display:none"></span>
+    <button class="tab-close" title="Fechar aba">×</button>
+  `;
+
+  tabEl.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('tab-close'))
+      activateTab(id);
+  });
+
+  tabEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showCtxMenu(e, id);
+  });
+
+  tabEl.addEventListener('dblclick', (e) => {
+    if (e.target.classList.contains('tab-close')) return;
+    input.removeAttribute('readonly');
+    input.focus();
+    input.select();
+  });
+
+  const input = tabEl.querySelector('.tab-label-input');
+  input.addEventListener('blur', () => {
+    input.setAttribute('readonly', true);
+    const tab = tabs.find(t => t.id === id);
+    if (tab) { tab.label = input.value || 'Nova guia'; saveTabs(); }
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); e.stopPropagation(); });
+  tabEl.querySelector('.tab-close').addEventListener('click', (e) => { e.stopPropagation(); closeTab(id); });
+
+  tabbar.insertBefore(tabEl, btnNewTab);
+
+  const webview = document.createElement('webview');
+  webview.setAttribute('partition', partition);
+  webview.setAttribute('src', initUrl);
+  webview.setAttribute('allowpopups', '');
+  webview.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;';
+
+  webview.addEventListener('did-navigate', (e) => {
+    if (activeTabId === id) updateAddressBar(e.url, label);
+    // Persiste URL
+    const tab = tabs.find(t => t.id === id);
+    if (tab) { tab.url = e.url; saveTabs(); }
+  });
+  webview.addEventListener('did-navigate-in-page', (e) => {
+    if (activeTabId === id) updateAddressBar(e.url, label);
+    // Persiste URL
+    const tab = tabs.find(t => t.id === id);
+    if (tab) { tab.url = e.url; saveTabs(); }
+  });
+
+  // Intercepta drops na webview — injeta listener que armazena paths num global
+  webview.addEventListener('dom-ready', () => {
+    webview.executeJavaScript(`
+      (function() {
+        if (window.__claudeTabsDropBound) return;
+        window.__claudeTabsDropBound = true;
+        window.__claudeTabsDropped = [];
+        document.addEventListener('drop', function(e) {
+          const files = Array.from(e.dataTransfer ? e.dataTransfer.files : []);
+          if (!files.length) return;
+          const paths = files.map(f => f.path).filter(Boolean);
+          if (paths.length) window.__claudeTabsDropped.push(...paths);
+        }, true);
+      })();
+    `).catch(() => {});
+  });
+
+  // Re-injeta observer a cada navegação concluída
+  webview.addEventListener('did-finish-load', () => {
+    injectCreditObserver(webview);
+  });
+
+  // Polling: verifica se houve drops recentes na webview
+  setInterval(() => {
+    if (!webview.isConnected) return;
+    webview.executeJavaScript(`
+      (function() {
+        if (!window.__claudeTabsDropped || !window.__claudeTabsDropped.length) return null;
+        const paths = window.__claudeTabsDropped.splice(0);
+        return paths;
+      })();
+    `).then(paths => {
+      if (paths && paths.length) addFilesToLibrary(paths);
+    }).catch(() => {});
+  }, 1000);
+
+  // Polling: monitora status de crédito da webview
+  setInterval(() => {
+    if (!webview.isConnected) return;
+    webview.executeJavaScript(`
+      typeof window.__getCreditStatus === 'function' ? window.__getCreditStatus() : null
+    `).then(status => {
+      if (!status) return;
+      setCreditStatus(id, status.limited, status.resetTime);
+      // Indicador de atividade
+      const tab = tabs.find(t => t.id === id);
+      if (tab) tab.tabEl.classList.toggle('typing', !!status.typing);
+    }).catch(() => {});
+  }, 3000);
+
+  container.appendChild(webview);
+  tabs.push({ id, label, partition, url: initUrl, color: initColor, webviewEl: webview, tabEl, groupId: initGroupId });
+  if (initColor) applyTabColor(id, initColor);
+  if (initGroupId) {
+    tabEl.classList.add('in-group');
+    const grp = groups.find(g => g.id === initGroupId);
+    if (grp && grp.collapsed) tabEl.classList.add('group-hidden');
+  }
+  setupTabDrag(tabEl, id);
+  if (!restore) activateTab(id);
+  if (!restore) tabbar.scrollLeft = tabbar.scrollWidth;
+  saveTabs();
+}
+
+// ============================================================
+// CREDIT LIMIT MONITOR
+// ============================================================
+
+// tabId → { timer, countdownInterval, resetTime }
+const creditTimers = {};
+
+function setCreditStatus(tabId, limited, resetTime) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  if (limited) {
+    tab.tabEl.classList.remove('credits-ok');
+    tab.tabEl.classList.add('credits-out');
+
+    // Agenda refresh + inicia countdown se tiver horário e ainda não agendou
+    if (resetTime && !creditTimers[tabId]) {
+      const ms = msUntilTime(resetTime);
+      if (ms > 0) {
+        // Refresh timer
+        const refreshTimer = setTimeout(() => {
+          if (creditTimers[tabId]) {
+            clearInterval(creditTimers[tabId].countdownInterval);
+            delete creditTimers[tabId];
+          }
+          const t = tabs.find(t => t.id === tabId);
+          if (t && t.webviewEl.isConnected) t.webviewEl.reload();
+        }, ms + 5000);
+
+        // Countdown interval
+        const countdownEl = tab.tabEl.querySelector('.tab-countdown');
+        function tickCountdown() {
+          const remaining = msUntilTime(resetTime) + 5000;
+          if (remaining <= 0) { if (countdownEl) countdownEl.style.display = 'none'; return; }
+          const totalSec = Math.floor(remaining / 1000);
+          const h = Math.floor(totalSec / 3600);
+          const m = Math.floor((totalSec % 3600) / 60);
+          const s = totalSec % 60;
+          const str = h > 0
+            ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+            : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+          if (countdownEl) { countdownEl.textContent = str; countdownEl.style.display = ''; }
+        }
+        tickCountdown();
+        const countdownInterval = setInterval(tickCountdown, 1000);
+
+        creditTimers[tabId] = { refreshTimer, countdownInterval, resetTime };
+      }
+    }
+  } else {
+    // Crédito liberado
+    tab.tabEl.classList.remove('credits-out');
+    tab.tabEl.classList.add('credits-ok');
+    const countdownEl = tab.tabEl.querySelector('.tab-countdown');
+    if (countdownEl) countdownEl.style.display = 'none';
+    if (creditTimers[tabId]) {
+      clearTimeout(creditTimers[tabId].refreshTimer);
+      clearInterval(creditTimers[tabId].countdownInterval);
+      delete creditTimers[tabId];
+    }
+  }
+}
+
+function msUntilTime(timeStr) {
+  // timeStr = "HH:MM"
+  const [h, m] = timeStr.split(':').map(Number);
+  const now  = new Date();
+  const target = new Date();
+  target.setHours(h, m, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1); // próximo dia
+  return target - now;
+}
+
+function activateTab(id) {
+  const tab = tabs.find(t => t.id === id);
+  if (!tab) return;
+  tabs.forEach(t => {
+    t.tabEl.classList.remove('active');
+    t.webviewEl.style.display = 'none';
+    t.webviewEl.classList.remove('active');
+  });
+  tab.tabEl.classList.add('active');
+  tab.webviewEl.style.display = 'flex';
+  tab.webviewEl.classList.add('active');
+  activeTabId = id;
+  emptyState.style.display = 'none';
+  try {
+    updateAddressBar(tab.webviewEl.getURL() || 'https://claude.ai', tab.label);
+  } catch(e) {
+    updateAddressBar('https://claude.ai', tab.label);
+  }
+}
+
+function closeTab(id) {
+  const idx = tabs.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const tab = tabs[idx];
+
+  // Se está num grupo, usa _detachTabFromWrapper para limpeza correta
+  // (inclui dissolução do grupo se restar 1 aba, remoção do wrapper se restar 0)
+  if (tab.groupId !== null && tab.groupId !== undefined) {
+    _detachTabFromWrapper(tab);
+    // _detachTabFromWrapper já atualiza groups[] e remove o wrapper se necessário
+    // O tabEl foi movido de volta pro tabbar; agora remove de vez
+  }
+
+  tab.tabEl.remove();
+  tab.webviewEl.remove();
+  // Atualiza tabs[] (pode ter sido reordenado pelo _detach)
+  const newIdx = tabs.findIndex(t => t.id === id);
+  if (newIdx !== -1) tabs.splice(newIdx, 1);
+
+  saveTabs();
+
+  if (!tabs.length) {
+    activeTabId = null;
+    emptyState.style.display = 'flex';
+    updateAddressBar('', '—');
+    return;
+  }
+  if (activeTabId === id) {
+    const fallback = tabs[Math.min(newIdx !== -1 ? newIdx : idx, tabs.length - 1)];
+    if (fallback) activateTab(fallback.id);
+  }
+}
+
+function updateAddressBar(url, label) {
+  urlDisplay.textContent = url || '';
+  profileBadge.textContent = label || '—';
+}
+
+function getActiveWebview() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  return tab ? tab.webviewEl : null;
+}
+
+function navBack()    { try { getActiveWebview()?.goBack();    } catch(e){} }
+function navForward() { try { getActiveWebview()?.goForward(); } catch(e){} }
+function navReload()  { try { getActiveWebview()?.reload();    } catch(e){} }
+
+// ============================================================
+// TAB DRAG & DROP + GROUPING
+// ============================================================
+
+const dropIndicator = document.getElementById('tab-drop-indicator');
+const groupCtxMenu  = document.getElementById('group-ctx-menu');
+const groupColorPicker = document.getElementById('group-color-picker');
+
+let dragTabId        = null; // id of tab being dragged
+let dragGroupId      = null; // id of group wrapper being dragged
+let dragOverTabId    = null; // id of tab currently hovered (for grouping)
+let dropPosition     = null; // { afterId, beforeId } for reordering
+let ctxGroupId       = null; // id of group in right-click menu
+let groupHoverTimer  = null; // timer to differentiate group-drop vs reorder
+
+const GROUP_HOVER_MS = 600; // ms segurando sobre a aba para ativar modo "agrupar"
+
+// ── Debug overlay ──────────────────────────────────────────────
+const _dbg = document.createElement('div');
+_dbg.style.cssText = `
+  position:fixed; bottom:12px; left:12px; z-index:99999;
+  background:rgba(0,0,0,0.85); color:#4ade80;
+  font:11px/1.5 "DM Mono",monospace; padding:8px 12px;
+  border-radius:8px; border:1px solid #4ade80;
+  max-width:400px; pointer-events:none;
+  display:none;
+`;
+document.body.appendChild(_dbg);
+let _dbgLines = [];
+function dbg(msg) {
+  _dbg.style.display = 'block';
+  _dbgLines.push(msg);
+  if (_dbgLines.length > 12) _dbgLines.shift();
+  _dbg.textContent = _dbgLines.join('\n');
+}
+function dbgClear() { _dbgLines = []; _dbg.style.display = 'none'; }
+// ──────────────────────────────────────────────────────────────
+
+function setupTabDrag(tabEl, tabId) {
+  tabEl.addEventListener('dragstart', (e) => {
+    if (e.target.classList.contains('tab-close') || e.target.classList.contains('tab-label-input')) {
+      e.preventDefault(); return;
+    }
+    dragTabId = tabId;
+    const tab = tabs.find(t => t.id === tabId);
+    dbg(`dragstart tab:${tabId} groupId:${tab?.groupId ?? 'none'}`);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(tabId));
+    setTimeout(() => tabEl.classList.add('dragging'), 0);
+  });
+
+  tabEl.addEventListener('dragend', (e) => {
+    const effect = e.dataTransfer.dropEffect;
+    dbg(`dragend tab:${tabId} dropEffect:${effect}`);
+    tabEl.classList.remove('dragging');
+    dragTabId = null;
+    dragOverTabId = null;
+    clearGroupHoverTimer();
+    clearAllGroupHighlights();
+    hideDropIndicator();
+    // Se o drop foi cancelado (none = dropped fora de zona válida),
+    // garantir que a aba continua funcional — não precisa fazer nada extra
+    // pois não movemos nada, apenas limpamos estado
+    setTimeout(dbgClear, 3000);
+  });
+
+  tabEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (window._draggingFilePath) return;
+
+    // ── Grupo sendo reposicionado ──
+    if (dragGroupId !== null) {
+      const rect   = tabEl.getBoundingClientRect();
+      const isLeft = e.clientX < rect.left + rect.width / 2;
+      showDropIndicator(isLeft ? rect.left - 1 : rect.right - 1);
+      e.dataTransfer.dropEffect = 'move';
+      return;
+    }
+
+    if (dragTabId === null || dragTabId === tabId) return;
+
+    const rect   = tabEl.getBoundingClientRect();
+    const isLeft = e.clientX < rect.left + rect.width / 2;
+
+    if (dragOverTabId !== tabId) {
+      clearGroupHoverTimer();
+      clearAllGroupHighlights();
+      dragOverTabId = tabId;
+      groupHoverTimer = setTimeout(() => {
+        hideDropIndicator();
+        tabEl.classList.add('drag-over-group');
+      }, GROUP_HOVER_MS);
+    }
+
+    if (!tabEl.classList.contains('drag-over-group')) {
+      showDropIndicator(isLeft ? rect.left - 1 : rect.right - 1);
+    }
+    e.dataTransfer.dropEffect = 'move';
+  });
+
+  tabEl.addEventListener('dragleave', (e) => {
+    if (!tabEl.contains(e.relatedTarget)) {
+      if (dragOverTabId === tabId) {
+        tabEl.classList.remove('drag-over-group');
+        dragOverTabId = null;
+        clearGroupHoverTimer();
+        hideDropIndicator();
+      }
+    }
+  });
+
+  tabEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window._draggingFilePath) return;
+    dbg(`tab.drop on:${tabId} dragTabId:${dragTabId} dragGroupId:${dragGroupId} groupMode:${tabEl.classList.contains('drag-over-group')}`);
+
+    // ── Drop de grupo sobre aba ──
+    if (dragGroupId !== null) {
+      const rect   = tabEl.getBoundingClientRect();
+      const isLeft = e.clientX < rect.left + rect.width / 2;
+      reorderGroup(dragGroupId, tabId, isLeft ? 'before' : 'after');
+      hideDropIndicator();
+      dragGroupId = null;
+      return;
+    }
+
+    if (dragTabId === null || dragTabId === tabId) return;
+
+    const targetTabObj = tabs.find(t => t.id === tabId);
+
+    if (tabEl.classList.contains('drag-over-group')) {
+      groupTabs(dragTabId, tabId);
+    } else if (targetTabObj && targetTabObj.groupId != null) {
+      // Soltou sobre uma aba dentro de um grupo → entra no grupo
+      const dragTabObj = tabs.find(t => t.id === dragTabId);
+      if (!dragTabObj || dragTabObj.groupId !== targetTabObj.groupId) {
+        addTabToGroup(dragTabId, targetTabObj.groupId);
+      } else {
+        // Já está no mesmo grupo → só reordena dentro do wrapper
+        const rect   = tabEl.getBoundingClientRect();
+        const isLeft = e.clientX < rect.left + rect.width / 2;
+        const tabsArea = tabEl.closest('.tab-group-tabs');
+        if (tabsArea) {
+          if (isLeft) tabsArea.insertBefore(dragTabObj.tabEl, tabEl);
+          else tabsArea.insertBefore(dragTabObj.tabEl, tabEl.nextSibling);
+          syncTabsArrayToDom(); saveTabs();
+        }
+      }
+    } else {
+      const rect   = tabEl.getBoundingClientRect();
+      const isLeft = e.clientX < rect.left + rect.width / 2;
+      reorderTab(dragTabId, tabId, isLeft ? 'before' : 'after');
+    }
+
+    clearAllGroupHighlights();
+    hideDropIndicator();
+    dragOverTabId = null;
+    clearGroupHoverTimer();
+  });
+}
+
+// Drag over tabbar background
+tabbar.addEventListener('dragover', (e) => {
+  if (window._draggingFilePath) return;
+  if (dragTabId === null && dragGroupId === null) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  dbg(`tabbar.dragover x:${e.clientX} target:${e.target.className}`);
+
+  const children = Array.from(tabbar.children).filter(el =>
+    !el.classList.contains('tab-drop-indicator') && el !== btnNewTab
+  );
+  let indicatorX = btnNewTab.getBoundingClientRect().left - 2;
+  for (const child of children) {
+    const rect = child.getBoundingClientRect();
+    if (e.clientX < rect.left + rect.width / 2) {
+      indicatorX = rect.left - 1;
+      break;
+    }
+  }
+  showDropIndicator(indicatorX);
+});
+
+tabbar.addEventListener('drop', (e) => {
+  if (window._draggingFilePath) return;
+  e.preventDefault();
+  dbg(`tabbar.drop x:${e.clientX} dragTabId:${dragTabId} dragGroupId:${dragGroupId}`);
+
+  if (dragGroupId !== null) {
+    _reorderGroupAtX(dragGroupId, e.clientX);
+    dragGroupId = null;
+  } else if (dragTabId !== null) {
+    _reorderTabAtX(dragTabId, e.clientX);
+  }
+
+  clearAllGroupHighlights();
+  hideDropIndicator();
+});
+
+// Reposiciona uma aba no tabbar baseado na posição X do cursor
+function _reorderTabAtX(tabId, x) {
+  const dragTab = tabs.find(t => t.id === tabId);
+  if (!dragTab) return;
+
+  // Coleta todos os elementos filhos diretos do tabbar (exceto o próprio tabEl e o indicador)
+  const children = Array.from(tabbar.children).filter(el =>
+    el !== dragTab.tabEl &&
+    !el.classList.contains('tab-drop-indicator') &&
+    el !== btnNewTab
+  );
+
+  let insertBefore = btnNewTab; // default: vai pro final
+  for (const child of children) {
+    const rect = child.getBoundingClientRect();
+    const mid  = rect.left + rect.width / 2;
+    if (x < mid) { insertBefore = child; break; }
+  }
+
+  // Se estava num grupo, desagrupa
+  if (dragTab.groupId != null) {
+    _detachTabFromWrapper(dragTab);
+    restoreTabColor(dragTab);
+  }
+
+  tabbar.insertBefore(dragTab.tabEl, insertBefore);
+  syncTabsArrayToDom();
+  saveTabs();
+}
+
+// Reposiciona um grupo no tabbar baseado na posição X do cursor
+function _reorderGroupAtX(grpId, x) {
+  const wrapper = getGroupWrapper(grpId);
+  if (!wrapper) return;
+
+  const children = Array.from(tabbar.children).filter(el =>
+    el !== wrapper &&
+    !el.classList.contains('tab-drop-indicator') &&
+    el !== btnNewTab
+  );
+
+  let insertBefore = btnNewTab;
+  for (const child of children) {
+    const rect = child.getBoundingClientRect();
+    const mid  = rect.left + rect.width / 2;
+    if (x < mid) { insertBefore = child; break; }
+  }
+
+  tabbar.insertBefore(wrapper, insertBefore);
+  syncTabsArrayToDom();
+  saveTabs();
+}
+
+tabbar.addEventListener('dragleave', (e) => {
+  if (!tabbar.contains(e.relatedTarget)) {
+    hideDropIndicator();
+    clearAllGroupHighlights();
+  }
+});
+
+function showDropIndicator(x) {
+  const barRect = tabbar.getBoundingClientRect();
+  dropIndicator.style.left = (x - barRect.left) + 'px';
+  dropIndicator.classList.add('visible');
+}
+function hideDropIndicator() {
+  dropIndicator.classList.remove('visible');
+}
+
+function clearAllGroupHighlights() {
+  document.querySelectorAll('.tab.drag-over-group').forEach(el => el.classList.remove('drag-over-group'));
+  document.querySelectorAll('.tab-group-wrapper.drag-over-wrapper').forEach(el => el.classList.remove('drag-over-wrapper'));
+}
+
+function clearGroupHoverTimer() {
+  if (groupHoverTimer) { clearTimeout(groupHoverTimer); groupHoverTimer = null; }
+}
+
+// Reposiciona um grupo inteiro (wrapper) no tabbar
+function reorderGroup(grpId, targetTabId, placement) {
+  const wrapper = getGroupWrapper(grpId);
+  if (!wrapper) return;
+
+  if (placement === 'end' || targetTabId === null) {
+    tabbar.insertBefore(wrapper, btnNewTab);
+  } else {
+    const targetTab = tabs.find(t => t.id === targetTabId);
+    if (!targetTab) return;
+    // Se o target está num grupo diferente, insere antes/depois do wrapper do target
+    const targetEl = (targetTab.groupId != null && targetTab.groupId !== grpId)
+      ? getGroupWrapper(targetTab.groupId) || targetTab.tabEl
+      : targetTab.tabEl;
+    if (placement === 'before') {
+      tabbar.insertBefore(wrapper, targetEl);
+    } else {
+      tabbar.insertBefore(wrapper, targetEl.nextSibling);
+    }
+  }
+
+  syncTabsArrayToDom();
+  saveTabs();
+}
+
+// Reorder tab in the DOM and in tabs array
+function reorderTab(dragId, targetId, placement) {
+  const dragTab = tabs.find(t => t.id === dragId);
+  if (!dragTab) return;
+
+  // Salva se estava agrupado antes de desagrupar
+  const wasGrouped = dragTab.groupId != null;
+
+  // Se estava num grupo, retira do wrapper (move tabEl para tabbar)
+  if (wasGrouped) {
+    _detachTabFromWrapper(dragTab);
+    restoreTabColor(dragTab);
+  }
+
+  // Agora posiciona no lugar certo no tabbar
+  if (placement === 'end' || targetId === null) {
+    tabbar.insertBefore(dragTab.tabEl, btnNewTab);
+  } else {
+    const targetTab = tabs.find(t => t.id === targetId);
+    if (!targetTab) { syncTabsArrayToDom(); saveTabs(); return; }
+
+    // Elemento de referência: se target está num grupo, usa o wrapper; senão usa o tabEl
+    let targetEl;
+    if (targetTab.groupId != null) {
+      targetEl = getGroupWrapper(targetTab.groupId);
+    }
+    // Se não achou wrapper (grupo foi dissolvido) ou target não está em grupo, usa tabEl
+    if (!targetEl || !tabbar.contains(targetEl)) {
+      targetEl = targetTab.tabEl;
+    }
+
+    if (placement === 'before') {
+      tabbar.insertBefore(dragTab.tabEl, targetEl);
+    } else {
+      tabbar.insertBefore(dragTab.tabEl, targetEl.nextSibling);
+    }
+  }
+
+  syncTabsArrayToDom();
+  saveTabs();
+}
+
+// Group two tabs together
+function groupTabs(dragId, targetId) {
+  const dragTab   = tabs.find(t => t.id === dragId);
+  const targetTab = tabs.find(t => t.id === targetId);
+  if (!dragTab || !targetTab) return;
+
+  // Se target já pertence a um grupo, adiciona drag a esse grupo
+  if (targetTab.groupId !== null && targetTab.groupId !== undefined) {
+    addTabToGroup(dragId, targetTab.groupId);
+    return;
+  }
+
+  // Se drag já pertence a um grupo, adiciona target a esse grupo
+  if (dragTab.groupId !== null && dragTab.groupId !== undefined) {
+    addTabToGroup(targetId, dragTab.groupId);
+    return;
+  }
+
+  // Cria novo grupo
+  groupCounter++;
+  const grpId = groupCounter;
+  const colors = ['#7c5cfc', '#c084fc', '#4ade80', '#fb923c', '#f472b6', '#38bdf8', '#facc15'];
+  const color  = colors[(grpId - 1) % colors.length];
+  const grp = { id: grpId, name: `Grupo ${grpId}`, color, collapsed: false, tabIds: [targetId, dragId] };
+  groups.push(grp);
+
+  // Marca as abas
+  targetTab.groupId = grpId;
+  dragTab.groupId   = grpId;
+  clearTabColor(targetTab);
+  clearTabColor(dragTab);
+
+  // Cria o wrapper e insere no lugar do targetTab no tabbar
+  const wrapper = _buildGroupWrapper(grp);
+  tabbar.insertBefore(wrapper, targetTab.tabEl);
+
+  // Move as duas abas para dentro do wrapper (tab-group-tabs)
+  const tabsArea = wrapper.querySelector('.tab-group-tabs');
+  tabsArea.appendChild(targetTab.tabEl);
+  tabsArea.appendChild(dragTab.tabEl);
+  targetTab.tabEl.classList.add('in-group');
+  dragTab.tabEl.classList.add('in-group');
+
+  syncTabsArrayToDom();
+  saveTabs();
+}
+
+function addTabToGroup(tabId, grpId) {
+  const grp = groups.find(g => g.id === grpId);
+  const tab = tabs.find(t => t.id === tabId);
+  if (!grp || !tab) return;
+  if (tab.groupId === grpId) return; // já está neste grupo
+
+  // Remove do grupo anterior se houver
+  if (tab.groupId !== null && tab.groupId !== undefined) {
+    _detachTabFromWrapper(tab);
+  }
+
+  tab.groupId = grpId;
+  tab.tabEl.classList.add('in-group');
+  if (grp.collapsed) tab.tabEl.classList.add('group-hidden');
+  grp.tabIds.push(tabId);
+  clearTabColor(tab);
+
+  // Adiciona no tab-group-tabs do wrapper
+  const wrapper = getGroupWrapper(grpId);
+  if (wrapper) {
+    wrapper.querySelector('.tab-group-tabs').appendChild(tab.tabEl);
+  }
+
+  _updateWrapperDOM(grpId);
+  syncTabsArrayToDom();
+  saveTabs();
+}
+
+function removeTabFromAnyGroup(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab || tab.groupId === null || tab.groupId === undefined) return;
+  _detachTabFromWrapper(tab);
+  restoreTabColor(tab);
+}
+
+// Retira a aba do wrapper sem destruir o grupo (a menos que fique vazio)
+function _detachTabFromWrapper(tab) {
+  const grpId = tab.groupId;
+  const grp   = groups.find(g => g.id === grpId);
+  if (!grp) { tab.groupId = null; return; }
+
+  grp.tabIds = grp.tabIds.filter(id => id !== tab.id);
+  tab.groupId = null;
+  tab.tabEl.classList.remove('in-group', 'group-hidden');
+
+  // Move o tabEl do wrapper para o tabbar (antes do wrapper)
+  const wrapper = getGroupWrapper(grpId);
+  if (wrapper && tabbar.contains(wrapper)) {
+    tabbar.insertBefore(tab.tabEl, wrapper);
+  }
+
+  if (grp.tabIds.length === 0) {
+    if (wrapper) wrapper.remove();
+    groups = groups.filter(g => g.id !== grpId);
+  } else if (grp.tabIds.length === 1) {
+    // Dissolve o grupo — a aba restante volta ao tabbar
+    const lastTabId = grp.tabIds[0];
+    const lastTab   = tabs.find(t => t.id === lastTabId);
+    if (lastTab) {
+      lastTab.groupId = null;
+      lastTab.tabEl.classList.remove('in-group', 'group-hidden');
+      if (wrapper && tabbar.contains(wrapper)) {
+        tabbar.insertBefore(lastTab.tabEl, wrapper);
+      }
+      restoreTabColor(lastTab);
+    }
+    if (wrapper) wrapper.remove();
+    groups = groups.filter(g => g.id !== grpId);
+  } else {
+    _updateWrapperDOM(grpId);
+  }
+}
+
+// Constrói o elemento wrapper completo para um grupo
+function _buildGroupWrapper(grp) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'tab-group-wrapper';
+  wrapper.dataset.groupId = grp.id;
+  wrapper.style.setProperty('--group-color', grp.color);
+  wrapper.style.setProperty('--group-border', grp.color + '55');
+
+  const labelEl = document.createElement('div');
+  labelEl.className = 'tab-group-label';
+  labelEl.innerHTML = `
+    <span class="tab-group-color-dot" style="background:${grp.color};box-shadow:0 0 6px ${grp.color}88"></span>
+    <span class="tab-group-name">${grp.name}</span>
+    <span class="tab-group-chevron">▾</span>
+  `;
+  labelEl.addEventListener('click', () => { if (!dragGroupId) toggleGroupCollapse(grp.id); });
+  labelEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    ctxGroupId = grp.id;
+    groupCtxMenu.style.left = e.clientX + 'px';
+    groupCtxMenu.style.top  = e.clientY + 'px';
+    groupCtxMenu.classList.add('open');
+  });
+
+  // Drag do GRUPO: só o label é draggable, não o wrapper inteiro
+  // Isso evita conflito com as abas filhas
+  labelEl.draggable = true;
+  labelEl.style.cursor = 'grab';
+
+  labelEl.addEventListener('dragstart', (e) => {
+    dragGroupId = grp.id;
+    dragTabId   = null;
+    dbg(`dragstart GROUP:${grp.id}`);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'group:' + grp.id);
+    setTimeout(() => wrapper.classList.add('dragging'), 0);
+  });
+  labelEl.addEventListener('dragend', () => {
+    wrapper.classList.remove('dragging');
+    dragGroupId = null;
+    hideDropIndicator();
+    clearAllGroupHighlights();
+    setTimeout(dbgClear, 3000);
+  });
+
+  const sep = document.createElement('div');
+  sep.className = 'tab-group-sep';
+
+  const tabsArea = document.createElement('div');
+  tabsArea.className = 'tab-group-tabs';
+
+  // Drag sobre o LABEL ou SEP do wrapper → adicionar ao grupo
+  // Não interferimos quando o drag está sobre uma aba filha (setupTabDrag cuida disso)
+  function isOverLabelOrSep(e) {
+    return e.target === labelEl || labelEl.contains(e.target) ||
+           e.target === sep || e.target === wrapper;
+  }
+
+  wrapper.addEventListener('dragover', (e) => {
+    if (window._draggingFilePath) return;
+
+    // ── Outro grupo passando sobre este wrapper ──
+    if (dragGroupId !== null && dragGroupId !== grp.id) {
+      e.preventDefault();
+      const rect   = wrapper.getBoundingClientRect();
+      const isLeft = e.clientX < rect.left + rect.width / 2;
+      showDropIndicator(isLeft ? rect.left - 1 : rect.right - 1);
+      e.dataTransfer.dropEffect = 'move';
+      return;
+    }
+
+    // ── Aba sendo arrastada sobre qualquer parte do wrapper ──
+    // SEMPRE preventDefault para não cancelar o drop
+    if (dragTabId !== null) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      dbg(`wrapper.dragover grp:${grp.id} target:${e.target.className}`);
+      if (isOverLabelOrSep(e)) {
+        wrapper.classList.add('drag-over-wrapper');
+        hideDropIndicator();
+      }
+    }
+  });
+  wrapper.addEventListener('dragleave', (e) => {
+    if (!wrapper.contains(e.relatedTarget)) {
+      wrapper.classList.remove('drag-over-wrapper');
+      hideDropIndicator();
+    }
+  });
+  wrapper.addEventListener('drop', (e) => {
+    wrapper.classList.remove('drag-over-wrapper');
+    if (window._draggingFilePath) return;
+
+    // ── Outro grupo sendo solto sobre este wrapper ──
+    if (dragGroupId !== null && dragGroupId !== grp.id) {
+      e.preventDefault();
+      const rect   = wrapper.getBoundingClientRect();
+      const isLeft = e.clientX < rect.left + rect.width / 2;
+      reorderGroup(dragGroupId, null, 'end'); // fallback, posição calculada abaixo
+      // Reposição precisa: insere antes ou depois deste wrapper
+      const dragWrapper = getGroupWrapper(dragGroupId);
+      if (dragWrapper) {
+        if (isLeft) tabbar.insertBefore(dragWrapper, wrapper);
+        else tabbar.insertBefore(dragWrapper, wrapper.nextSibling);
+      }
+      syncTabsArrayToDom();
+      saveTabs();
+      hideDropIndicator();
+      dragGroupId = null;
+      return;
+    }
+
+    if (dragTabId === null) return;
+    if (!isOverLabelOrSep(e)) return;
+    e.preventDefault();
+    const tab = tabs.find(t => t.id === dragTabId);
+    if (tab && tab.groupId === grp.id) return;
+    addTabToGroup(dragTabId, grp.id);
+  });
+
+  wrapper.appendChild(labelEl);
+  wrapper.appendChild(sep);
+  wrapper.appendChild(tabsArea);
+  return wrapper;
+}
+
+// Atualiza nome, cor e estado collapsed do wrapper no DOM
+function _updateWrapperDOM(grpId) {
+  const grp = groups.find(g => g.id === grpId);
+  if (!grp) return;
+  const wrapper = getGroupWrapper(grpId);
+  if (!wrapper) return;
+  wrapper.style.setProperty('--group-color', grp.color);
+  wrapper.style.setProperty('--group-border', grp.color + '55');
+  wrapper.classList.toggle('collapsed', !!grp.collapsed);
+  const dot  = wrapper.querySelector('.tab-group-color-dot');
+  const name = wrapper.querySelector('.tab-group-name');
+  const chev = wrapper.querySelector('.tab-group-chevron');
+  if (dot)  { dot.style.background = grp.color; dot.style.boxShadow = `0 0 6px ${grp.color}88`; }
+  if (name) name.textContent = grp.name;
+  const tabsArea = wrapper.querySelector('.tab-group-tabs');
+  if (tabsArea) tabsArea.classList.toggle('collapsed-tabs', !!grp.collapsed);
+}
+
+// Alias de compatibilidade
+function updateGroupLabel(grpId) { _updateWrapperDOM(grpId); }
+function createGroupLabelEl(grp) { return _buildGroupWrapper(grp); } // usado em rebuildTabbarFromState
+function refreshGroupTabClasses() {} // não necessário com wrapper
+
+function getGroupWrapper(grpId) {
+  return tabbar.querySelector(`.tab-group-wrapper[data-group-id="${grpId}"]`);
+}
+
+function toggleGroupCollapse(grpId) {
+  const grp = groups.find(g => g.id === grpId);
+  if (!grp) return;
+  grp.collapsed = !grp.collapsed;
+  for (const tid of grp.tabIds) {
+    const t = tabs.find(t => t.id === tid);
+    if (t) t.tabEl.classList.toggle('group-hidden', grp.collapsed);
+  }
+  _updateWrapperDOM(grpId);
+  saveTabs();
+}
+
+// Rebuild tabbar a partir do estado restaurado (boot)
+function rebuildTabbarFromState() {
+  for (const grp of groups) {
+    if (!grp.tabIds.length) continue;
+
+    // Pega referência do elemento ancla ANTES de mover qualquer coisa
+    const firstTab = tabs.find(t => t.id === grp.tabIds[0]);
+    if (!firstTab) continue;
+    const anchor = firstTab.tabEl; // elemento ainda no tabbar
+
+    const wrapper  = _buildGroupWrapper(grp);
+    const tabsArea = wrapper.querySelector('.tab-group-tabs');
+
+    // Insere o wrapper no lugar da primeira aba do grupo
+    tabbar.insertBefore(wrapper, anchor);
+
+    // Agora move as abas para dentro do wrapper
+    for (const tid of grp.tabIds) {
+      const t = tabs.find(t => t.id === tid);
+      if (!t) continue;
+      t.groupId = grp.id;
+      t.tabEl.classList.add('in-group');
+      if (grp.collapsed) t.tabEl.classList.add('group-hidden');
+      tabsArea.appendChild(t.tabEl); // tira do tabbar e coloca no wrapper
+      clearTabColor(t);
+    }
+
+    _updateWrapperDOM(grp.id);
+  }
+}
+
+// Sync the tabs[] array order to reflect current DOM order
+function syncTabsArrayToDom() {
+  const newOrder = [];
+  // Percorre todos os .tab no tabbar (incluindo dentro de wrappers)
+  tabbar.querySelectorAll('.tab').forEach(el => {
+    const id = parseInt(el.dataset.id);
+    const t  = tabs.find(t => t.id === id);
+    if (t) newOrder.push(t);
+  });
+  tabs.length = 0;
+  tabs.push(...newOrder);
+}
+
+// ============================================================
+// GROUP CONTEXT MENU
+// ============================================================
+
+function hideGroupCtxMenu() { groupCtxMenu.classList.remove('open'); }
+
+document.addEventListener('click', hideGroupCtxMenu);
+document.addEventListener('contextmenu', (e) => {
+  if (!e.target.closest('.tab-group-wrapper')) hideGroupCtxMenu();
+});
+
+document.getElementById('gctx-rename').addEventListener('click', () => {
+  hideGroupCtxMenu();
+  if (ctxGroupId === null) return;
+  const grp = groups.find(g => g.id === ctxGroupId);
+  if (!grp) return;
+  const name = prompt('Nome do grupo:', grp.name);
+  if (name !== null && name.trim()) {
+    grp.name = name.trim();
+    updateGroupLabel(grp.id);
+    saveTabs();
+  }
+});
+
+document.getElementById('gctx-color').addEventListener('click', () => {
+  hideGroupCtxMenu();
+  if (ctxGroupId === null) return;
+  const grp = groups.find(g => g.id === ctxGroupId);
+  if (!grp) return;
+  groupColorPicker.value = grp.color || '#7c5cfc';
+  groupColorPicker.click();
+  groupColorPicker.onchange = () => {
+    grp.color = groupColorPicker.value;
+    updateGroupLabel(grp.id);
+    saveTabs();
+  };
+});
+
+document.getElementById('gctx-ungroup').addEventListener('click', () => {
+  hideGroupCtxMenu();
+  if (ctxGroupId === null) return;
+  const grp = groups.find(g => g.id === ctxGroupId);
+  if (!grp) return;
+
+  // Pega o wrapper antes de dissolver
+  const wrapper = getGroupWrapper(ctxGroupId);
+
+  // Move todas as abas para o tabbar (antes do wrapper) e limpa estado
+  const tabIds = [...grp.tabIds];
+  for (const tid of tabIds) {
+    const t = tabs.find(t => t.id === tid);
+    if (!t) continue;
+    t.groupId = null;
+    t.tabEl.classList.remove('in-group', 'group-hidden');
+    if (wrapper && tabbar.contains(wrapper)) {
+      tabbar.insertBefore(t.tabEl, wrapper);
+    }
+    restoreTabColor(t);
+  }
+
+  // Remove wrapper e grupo
+  if (wrapper) wrapper.remove();
+  groups = groups.filter(g => g.id !== ctxGroupId);
+  saveTabs();
+});
+
+document.getElementById('gctx-close-all').addEventListener('click', () => {
+  hideGroupCtxMenu();
+  if (ctxGroupId === null) return;
+  const grp = groups.find(g => g.id === ctxGroupId);
+  if (!grp) return;
+
+  // Remove o wrapper primeiro, limpa o grupo do state
+  const wrapper = getGroupWrapper(ctxGroupId);
+  const tabIds  = [...grp.tabIds];
+  groups = groups.filter(g => g.id !== ctxGroupId);
+  if (wrapper) wrapper.remove();
+
+  // Fecha cada aba sem passar pelo _detachTabFromWrapper (grupo já foi removido)
+  for (const tid of tabIds) {
+    const t = tabs.find(t => t.id === tid);
+    if (!t) continue;
+    t.groupId = null;
+    t.tabEl.remove();
+    t.webviewEl.remove();
+  }
+  // Remove do array tabs
+  tabs.splice(0, tabs.length, ...tabs.filter(t => !tabIds.includes(t.id)));
+
+  saveTabs();
+  if (!tabs.length) {
+    activeTabId = null;
+    emptyState.style.display = 'flex';
+    updateAddressBar('', '—');
+  } else if (tabIds.includes(activeTabId)) {
+    activateTab(tabs[tabs.length - 1].id);
+  }
+});
+
+// Restaura abas salvas
+restoreTabs();
+
+// Scroll com mousewheel na tabbar
+tabbar.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  tabbar.scrollLeft += e.deltaY * 0.5 || e.deltaX * 0.5;
+}, { passive: false });
+
+// Atalhos
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 't') { e.preventDefault(); const btn = document.getElementById('btn-new-tab'); toggleNewTabPopup({ stopPropagation: ()=>{}, target: btn }); }
+  if (e.ctrlKey && e.key === 'w') { e.preventDefault(); if (activeTabId) closeTab(activeTabId); }
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault();
+    if (tabs.length < 2) return;
+    const idx  = tabs.findIndex(t => t.id === activeTabId);
+    activateTab(tabs[(idx + 1) % tabs.length].id);
+  }
+  if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+    const n = parseInt(e.key) - 1;
+    if (tabs[n]) activateTab(tabs[n].id);
+  }
+});
+</script>
+</body>
+</html>

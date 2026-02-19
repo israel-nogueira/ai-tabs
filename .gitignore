@@ -1,0 +1,28 @@
+# Dependências
+node_modules/
+
+# Build output
+dist/
+
+# Cache do Electron Builder
+.cache/
+
+# Perfis de sessão das webviews (dados locais de login)
+Partitions/
+
+# Electron cache
+~/.electron/
+~/.electron-gyp/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Variáveis de ambiente
+.env
+.env.local

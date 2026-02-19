@@ -1,0 +1,124 @@
+name: Build Claude Tabs
+
+on:
+  push:
+    tags:
+      - 'v*'          # dispara ao criar uma tag tipo v1.0.0
+  workflow_dispatch:  # permite rodar manualmente pelo GitHub
+
+jobs:
+
+  # ─── WINDOWS ───────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Build Windows
+        run: npm run build:win
+
+      - name: Upload artefatos Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: Claude-Tabs-Windows
+          path: |
+            dist/*.exe
+          retention-days: 7
+
+  # ─── LINUX ─────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Build Linux
+        run: npm run build:linux
+
+      - name: Upload artefatos Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: Claude-Tabs-Linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+          retention-days: 7
+
+  # ─── MAC ───────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Build Mac
+        run: npm run build:mac
+        env:
+          # Se tiver Apple Developer cert, coloca nos secrets do GitHub
+          # CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
+          # CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          # Se não tiver, desabilita a assinatura:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artefatos Mac
+        uses: actions/upload-artifact@v4
+        with:
+          name: Claude-Tabs-Mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          retention-days: 7
+
+  # ─── RELEASE ───────────────────────────────────────────────────
+  # Cria um release no GitHub com todos os arquivos quando tem tag
+  release:
+    needs: [build-windows, build-linux, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Baixar artefatos Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: Claude-Tabs-Windows
+          path: release/
+
+      - name: Baixar artefatos Linux
+        uses: actions/download-artifact@v4
+        with:
+          name: Claude-Tabs-Linux
+          path: release/
+
+      - name: Baixar artefatos Mac
+        uses: actions/download-artifact@v4
+        with:
+          name: Claude-Tabs-Mac
+          path: release/
+
+      - name: Criar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/**/*
+          generate_release_notes: true
