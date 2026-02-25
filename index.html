@@ -2339,6 +2339,35 @@ document.addEventListener('keydown', (e) => {
     const n = parseInt(e.key) - 1;
     if (tabs[n]) activateTab(tabs[n].id);
   }
+
+  // Reload do webview ativo (redundante com globalShortcut, mas cobre edge cases)
+  const isReload = e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.key === 'R');
+  if (isReload) {
+    e.preventDefault();
+    reloadActiveWebview(e.shiftKey);
+  }
+});
+
+// Função que recarrega o webview ativo
+function reloadActiveWebview(hard = false) {
+  if (!activeTabId) return;
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.webviewEl) return;
+  try {
+    if (hard) {
+      tab.webviewEl.reloadIgnoringCache();
+    } else {
+      tab.webviewEl.reload();
+    }
+  } catch(err) {
+    console.warn('Reload webview error:', err);
+  }
+}
+
+// Recebe comando de reload vindo do processo principal (globalShortcut)
+const { ipcRenderer } = require('electron');
+ipcRenderer.on('reload-active-webview', (_event, { hard }) => {
+  reloadActiveWebview(hard);
 });
 </script>
 </body>

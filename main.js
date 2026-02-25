@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -63,6 +63,20 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+
+  // Intercepta F5 e Ctrl+R / Ctrl+Shift+R globalmente para repassar ao webview ativo
+  // em vez de recarregar o próprio app Electron
+  const reloadActiveWebview = (hardReload = false) => {
+    if (mainWindow) mainWindow.webContents.send('reload-active-webview', { hard: hardReload });
+  };
+
+  globalShortcut.register('F5',                        () => reloadActiveWebview(false));
+  globalShortcut.register('CommandOrControl+R',        () => reloadActiveWebview(false));
+  globalShortcut.register('CommandOrControl+Shift+R',  () => reloadActiveWebview(true));
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
