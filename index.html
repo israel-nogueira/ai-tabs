@@ -123,13 +123,7 @@
     color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px;
     width: 100%; cursor: default;
   }
-  .tab-close {
-    width: 16px; height: 16px; border-radius: 4px;
-    background: transparent; border: none; color: var(--text-dim);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    font-size: 12px; transition: all 0.1s; flex-shrink: 0; line-height: 1;
-  }
-  .tab-close:hover { background: rgba(252,92,124,0.2); color: var(--danger); }
+
   #btn-new-tab {
     width: 28px; height: 28px; border-radius: 8px;
     background: transparent; border: 1px dashed var(--border);
@@ -412,14 +406,17 @@
   /* TAB DRAG & DROP */
   .tab.dragging { opacity: 0.35; pointer-events: none; }
   .tab.drag-over-group {
-    box-shadow: 0 0 0 2px var(--group-color, var(--accent2)), inset 0 0 12px rgba(192,132,252,0.12) !important;
-    border-color: var(--group-color, var(--accent2)) !important;
+    box-shadow: 0 0 0 2px var(--accent2), inset 0 0 16px rgba(192,132,252,0.2) !important;
+    border-color: var(--accent2) !important;
+    background: rgba(192,132,252,0.12) !important;
+    transform: scale(1.06);
+    transition: transform 0.1s, background 0.1s;
   }
   .tab-drop-indicator {
-    position: absolute; top: 4px; bottom: 4px;
-    width: 2px; background: var(--accent);
-    border-radius: 2px; pointer-events: none;
-    box-shadow: 0 0 6px var(--accent);
+    position: absolute; top: 2px; bottom: 2px;
+    width: 3px; background: var(--accent);
+    border-radius: 3px; pointer-events: none;
+    box-shadow: 0 0 8px var(--accent), 0 0 2px var(--accent);
     z-index: 200; display: none;
   }
   .tab-drop-indicator.visible { display: block; }
@@ -1324,12 +1321,10 @@ function createTab(restore = null, overrideUrl = null) {
       <input class="tab-label-input" value="${label}" title="Duplo clique para renomear" readonly />
     </span>
     <span class="tab-countdown" style="display:none"></span>
-    <button class="tab-close" title="Fechar aba">×</button>
   `;
 
   tabEl.addEventListener('click', (e) => {
-    if (!e.target.classList.contains('tab-close'))
-      activateTab(id);
+    activateTab(id);
   });
 
   tabEl.addEventListener('contextmenu', (e) => {
@@ -1339,7 +1334,6 @@ function createTab(restore = null, overrideUrl = null) {
   });
 
   tabEl.addEventListener('dblclick', (e) => {
-    if (e.target.classList.contains('tab-close')) return;
     input.removeAttribute('readonly');
     input.focus();
     input.select();
@@ -1352,7 +1346,6 @@ function createTab(restore = null, overrideUrl = null) {
     if (tab) { tab.label = input.value || 'Nova guia'; saveTabs(); }
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); e.stopPropagation(); });
-  tabEl.querySelector('.tab-close').addEventListener('click', (e) => { e.stopPropagation(); closeTab(id); });
 
   tabbar.insertBefore(tabEl, btnNewTab);
 
@@ -1580,47 +1573,28 @@ let groupHoverTimer  = null;
 
 const GROUP_HOVER_MS = 600;
 
-const _dbg = document.createElement('div');
-_dbg.style.cssText = `
-  position:fixed; bottom:12px; left:12px; z-index:99999;
-  background:rgba(0,0,0,0.85); color:#4ade80;
-  font:11px/1.5 "DM Mono",monospace; padding:8px 12px;
-  border-radius:8px; border:1px solid #4ade80;
-  max-width:400px; pointer-events:none;
-  display:none;
-`;
-document.body.appendChild(_dbg);
-let _dbgLines = [];
-function dbg(msg) {
-  _dbg.style.display = 'block';
-  _dbgLines.push(msg);
-  if (_dbgLines.length > 12) _dbgLines.shift();
-  _dbg.textContent = _dbgLines.join('\n');
-}
-function dbgClear() { _dbgLines = []; _dbg.style.display = 'none'; }
+function dbg(msg) { /* debug desativado */ }
+function dbgClear() { /* debug desativado */ }
 
 function setupTabDrag(tabEl, tabId) {
   tabEl.addEventListener('dragstart', (e) => {
-    if (e.target.classList.contains('tab-close') || e.target.classList.contains('tab-label-input')) {
+    if (e.target.classList.contains('tab-label-input')) {
       e.preventDefault(); return;
     }
     dragTabId = tabId;
-    const tab = tabs.find(t => t.id === tabId);
-    dbg(`dragstart tab:${tabId} groupId:${tab?.groupId ?? 'none'}`);
-    tabEl.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(tabId));
+    setTimeout(() => tabEl.classList.add('dragging'), 0);
   });
 
   tabEl.addEventListener('dragend', () => {
     tabEl.classList.remove('dragging');
     dragTabId = null;
     dragOverTabId = null;
-    dragGroupId = null;
     clearHoverTimer();
     dropIndicator.classList.remove('visible');
     document.querySelectorAll('.tab.drag-over-group').forEach(t => t.classList.remove('drag-over-group'));
-    dbgClear();
+    document.querySelectorAll('.tab-group-wrapper.drag-over-wrapper').forEach(t => t.classList.remove('drag-over-wrapper'));
   });
 
   tabEl.addEventListener('dragover', (e) => {
@@ -1630,18 +1604,34 @@ function setupTabDrag(tabEl, tabId) {
 
     if (dragTabId === tabId) return;
 
-    const rect = tabEl.getBoundingClientRect();
-    const mid  = rect.left + rect.width / 2;
+    const rect   = tabEl.getBoundingClientRect();
+    const x      = e.clientX - rect.left;
+    const w      = rect.width;
+    // Zona central (35%–65%) = agrupar; bordas = reordenar
+    const inGroupZone = x > w * 0.35 && x < w * 0.65;
 
     if (dragTabId !== null) {
-      if (dragOverTabId !== tabId) {
-        dragOverTabId = tabId;
-        startHoverTimer(tabId);
+      if (inGroupZone) {
+        // Modo agrupar: destaca a aba alvo, esconde indicador de posição
+        tabEl.classList.add('drag-over-group');
+        dropIndicator.classList.remove('visible');
+      } else {
+        // Modo reordenar: mostra indicador, remove destaque de grupo
+        tabEl.classList.remove('drag-over-group');
+        const placement  = x < w / 2 ? 'before' : 'after';
+        const indicatorX = placement === 'before' ? rect.left - 2 : rect.right - 2;
+        dropIndicator.style.left   = indicatorX + 'px';
+        dropIndicator.style.top    = rect.top + 'px';
+        dropIndicator.style.height = rect.height + 'px';
+        dropIndicator.classList.add('visible');
       }
-      const placement = e.clientX < mid ? 'before' : 'after';
+    }
+
+    if (dragGroupId !== null) {
+      const placement  = x < w / 2 ? 'before' : 'after';
       const indicatorX = placement === 'before' ? rect.left - 2 : rect.right - 2;
-      dropIndicator.style.left = indicatorX + 'px';
-      dropIndicator.style.top  = rect.top + 'px';
+      dropIndicator.style.left   = indicatorX + 'px';
+      dropIndicator.style.top    = rect.top + 'px';
       dropIndicator.style.height = rect.height + 'px';
       dropIndicator.classList.add('visible');
     }
@@ -1649,23 +1639,20 @@ function setupTabDrag(tabEl, tabId) {
 
   tabEl.addEventListener('dragleave', (e) => {
     if (!e.currentTarget.contains(e.relatedTarget)) {
-      if (dragOverTabId === tabId) {
-        dragOverTabId = null;
-        clearHoverTimer();
-        tabEl.classList.remove('drag-over-group');
-      }
+      tabEl.classList.remove('drag-over-group');
+      dropIndicator.classList.remove('visible');
     }
   });
 
   tabEl.addEventListener('drop', (e) => {
     e.preventDefault();
     dropIndicator.classList.remove('visible');
+    tabEl.classList.remove('drag-over-group');
     clearHoverTimer();
 
     if (dragGroupId !== null) {
-      const rect = tabEl.getBoundingClientRect();
-      const mid  = rect.left + rect.width / 2;
-      const placement = e.clientX < mid ? 'before' : 'after';
+      const rect      = tabEl.getBoundingClientRect();
+      const placement = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
       reorderGroup(dragGroupId, tabId, placement);
       dragGroupId = null;
       return;
@@ -1673,27 +1660,21 @@ function setupTabDrag(tabEl, tabId) {
 
     if (dragTabId === null || dragTabId === tabId) return;
 
-    const targetTab = tabs.find(t => t.id === tabId);
-    if (tabEl.classList.contains('drag-over-group') && targetTab) {
-      tabEl.classList.remove('drag-over-group');
+    const rect      = tabEl.getBoundingClientRect();
+    const x         = e.clientX - rect.left;
+    const w         = rect.width;
+    const inGroupZone = x > w * 0.35 && x < w * 0.65;
+
+    if (inGroupZone) {
       groupTabs(dragTabId, tabId);
     } else {
-      const rect = tabEl.getBoundingClientRect();
-      const mid  = rect.left + rect.width / 2;
-      const placement = e.clientX < mid ? 'before' : 'after';
+      const placement = x < w / 2 ? 'before' : 'after';
       reorderTab(dragTabId, tabId, placement);
     }
     dragTabId = null;
   });
 }
 
-function startHoverTimer(tabId) {
-  clearHoverTimer();
-  groupHoverTimer = setTimeout(() => {
-    const tabEl = tabs.find(t => t.id === tabId)?.tabEl;
-    if (tabEl) tabEl.classList.add('drag-over-group');
-  }, GROUP_HOVER_MS);
-}
 
 function clearHoverTimer() {
   if (groupHoverTimer) { clearTimeout(groupHoverTimer); groupHoverTimer = null; }
@@ -1936,9 +1917,9 @@ function _buildGroupWrapper(grp) {
   wrapper.addEventListener('dragstart', (e) => {
     if (e.target.classList.contains('tab')) { e.stopPropagation(); return; }
     dragGroupId = grp.id;
-    wrapper.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', 'group:' + grp.id);
+    setTimeout(() => wrapper.classList.add('dragging'), 0);
   });
 
   wrapper.addEventListener('dragend', () => {
