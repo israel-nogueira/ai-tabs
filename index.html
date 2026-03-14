@@ -232,11 +232,37 @@
     display: flex; flex-direction: column;
     padding: 12px 10px; gap: 10px; overflow: hidden;
   }
+
+  /* ── Panel header com botão toggle ── */
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0; padding: 0 2px;
+  }
   .panel-title {
     font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
     color: var(--text-dim); text-transform: uppercase;
-    padding: 0 2px; flex-shrink: 0;
   }
+  #btn-select-all {
+    height: 20px; padding: 0 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.1s;
+    white-space: nowrap;
+    display: none; /* fica visível só quando há arquivos */
+  }
+  #btn-select-all.visible { display: flex; align-items: center; gap: 4px; }
+  #btn-select-all:hover { border-color: var(--accent); color: var(--accent); }
+  #btn-select-all.all-selected {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(124,92,252,0.1);
+  }
+
   #drop-zone {
     border: 1.5px dashed var(--border); border-radius: 8px;
     padding: 16px 10px; text-align: center;
@@ -268,8 +294,7 @@
   .file-del:hover { background: rgba(252,92,124,0.2); color: var(--danger); }
   .file-list-empty { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-dim); text-align: center; padding: 20px 0; }
 
-
-  /* DRAG OVERLAY — captura drop sobre a webview */
+  /* DRAG OVERLAY */
   #drag-overlay {
     display: none;
     position: absolute;
@@ -334,6 +359,7 @@
   }
   .action-btn:hover { border-color: var(--accent); color: var(--accent); }
   .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
   /* SCROLLBAR */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -398,16 +424,7 @@
   }
   .tab-drop-indicator.visible { display: block; }
 
-  /* ── TAB GROUP WRAPPER ──────────────────────────────────────────
-   * Estrutura no DOM:
-   *   <div class="tab-group-wrapper">          ← container com borda
-   *     <div class="tab-group-label">…</div>   ← "grupo1 ▾"
-   *     <div class="tab-group-tabs">           ← área das abas
-   *       <div class="tab in-group">…</div>
-   *       <div class="tab in-group">…</div>
-   *     </div>
-   *   </div>
-   * ──────────────────────────────────────────────────────────── */
+  /* TAB GROUP WRAPPER */
   .tab-group-wrapper {
     display: flex; align-items: center;
     flex-shrink: 0;
@@ -431,7 +448,6 @@
   }
   .tab-group-tabs.collapsed-tabs { display: none; }
 
-  /* Label dentro do wrapper */
   .tab-group-label {
     display: flex; align-items: center; gap: 5px;
     padding: 0 8px 0 10px;
@@ -444,13 +460,11 @@
   }
   .tab-group-label:hover { background: rgba(255,255,255,0.05); color: var(--text); }
 
-  /* Separador vertical entre label e abas */
   .tab-group-sep {
     width: 1px; height: 18px;
     background: rgba(255,255,255,0.1);
     flex-shrink: 0; margin: 0 4px;
   }
-  /* Oculta separador quando grupo colapsado */
   .tab-group-wrapper.collapsed .tab-group-sep { display: none; }
 
   .tab-group-color-dot {
@@ -460,7 +474,6 @@
   .tab-group-chevron { font-size: 9px; color: var(--text-dim); transition: transform 0.15s; }
   .tab-group-wrapper.collapsed .tab-group-chevron { transform: rotate(-90deg); }
 
-  /* Group ctx menu */
   #group-ctx-menu {
     position: fixed; z-index: 9999;
     background: var(--surface2); border: 1px solid var(--border);
@@ -470,7 +483,6 @@
   }
   #group-ctx-menu.open { display: block; }
 
-  /* Abas dentro do grupo: menores, sem borda externa forte */
   .tab.in-group {
     min-width: 100px; max-width: 150px;
     height: 26px;
@@ -526,13 +538,18 @@
   <div id="url-display">claude.ai</div>
   <span class="profile-badge" id="profile-badge">—</span>
   <button id="btn-files" onclick="togglePanel()" title="Biblioteca de arquivos">📎</button>
-
 </div>
 
 <!-- FILE PANEL -->
 <div id="file-panel">
   <div id="file-panel-inner">
-    <div class="panel-title">📁 Biblioteca</div>
+
+    <!-- Header com título + botão toggle selecionar todos -->
+    <div class="panel-header">
+      <div class="panel-title">📁 Biblioteca</div>
+      <button id="btn-select-all" onclick="toggleSelectAll()" title="Selecionar / desselecionar todos">☐ Todos</button>
+    </div>
+
     <div id="drop-zone">
       <span class="dz-icon">⬇</span>
       Arraste arquivos aqui
@@ -610,6 +627,10 @@ const fileActions = document.getElementById('file-actions');
 
 let selectedFiles = new Set(); // paths selecionados
 
+// ============================================================
+// FILE SELECTION
+// ============================================================
+
 function toggleSelect(filePath, itemEl) {
   if (selectedFiles.has(filePath)) {
     selectedFiles.delete(filePath);
@@ -619,12 +640,54 @@ function toggleSelect(filePath, itemEl) {
     itemEl.classList.add('selected');
   }
   fileActions.classList.toggle('visible', selectedFiles.size > 0);
+  _syncSelectAllBtn();
 }
 
 function clearSelection() {
   selectedFiles.clear();
   document.querySelectorAll('.file-item.selected').forEach(el => el.classList.remove('selected'));
   fileActions.classList.remove('visible');
+  _syncSelectAllBtn();
+}
+
+/**
+ * Sincroniza o visual do botão "Todos" com o estado atual da seleção.
+ * - Oculto quando não há arquivos na biblioteca
+ * - "☐ Todos" quando nenhum (ou parcialmente) selecionado
+ * - "☑ Todos" + destaque quando todos estão selecionados
+ */
+function _syncSelectAllBtn() {
+  const btn = document.getElementById('btn-select-all');
+  if (!btn) return;
+  const hasFiles = library.length > 0;
+  btn.classList.toggle('visible', hasFiles);
+  const allSelected = hasFiles && selectedFiles.size === library.length;
+  btn.classList.toggle('all-selected', allSelected);
+  btn.textContent = allSelected ? '☑ Todos' : '☐ Todos';
+}
+
+/**
+ * Toggle: seleciona todos os arquivos da biblioteca, ou desseleciona todos
+ * caso já estejam todos selecionados.
+ */
+function toggleSelectAll() {
+  const allSelected = selectedFiles.size === library.length && library.length > 0;
+
+  if (allSelected) {
+    clearSelection();
+  } else {
+    // Seleciona todos
+    selectedFiles.clear();
+    document.querySelectorAll('.file-item').forEach(item => {
+      const fp = item.dataset.path;
+      if (fp) {
+        selectedFiles.add(fp);
+        item.classList.add('selected');
+      }
+    });
+    fileActions.classList.toggle('visible', selectedFiles.size > 0);
+    _syncSelectAllBtn();
+  }
 }
 
 function attachSelected() {
@@ -669,17 +732,16 @@ function injectFileToWebview(filePath, fileName, mimeType) {
 
   const fileData = Array.from(fs.readFileSync(filePath));
 
-  // Script injetado na webview: cria File, DataTransfer, dispara drop
   const script = `
 (function() {
   const bytes = new Uint8Array(${JSON.stringify(fileData)});
   const blob  = new Blob([bytes], { type: '${mimeType}' });
-  const file  = new File([blob], '${fileName.replace(/'/g, "\\\'")}', { type: '${mimeType}' });
+  const file  = new File([blob], '${fileName.replace(/'/g, "\\'")}', { type: '${mimeType}' });
 
   const dt = new DataTransfer();
   dt.items.add(file);
 
-  // ── Gemini: abre menu → clica "Enviar arquivos" → injeta no input ──
+  // ── Gemini ──
   const isGemini = location.hostname.includes('gemini.google.com');
   if (isGemini) {
     const observer = new MutationObserver((mutations) => {
@@ -693,7 +755,6 @@ function injectFileToWebview(filePath, fileName, mimeType) {
             Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
             inp.dispatchEvent(new Event('change', { bubbles: true }));
             inp.dispatchEvent(new Event('input',  { bubbles: true }));
-            // Dá focus no editor para o Angular fechar o menu naturalmente
             setTimeout(() => {
               const editor = document.querySelector('div.ql-editor[contenteditable="true"]');
               if (editor) editor.focus();
@@ -705,13 +766,10 @@ function injectFileToWebview(filePath, fileName, mimeType) {
     observer.observe(document.body, { childList: true, subtree: true });
     setTimeout(() => observer.disconnect(), 8000);
 
-    // Passo 1: abre o menu de upload
     const mainBtn = document.querySelector('button.upload-card-button');
     if (!mainBtn) { observer.disconnect(); return 'gemini-no-btn'; }
     mainBtn.click();
 
-    // Passo 2: clica em "Enviar arquivos" no menu popup
-    // NÃO fecha o menu aqui — o observer fecha após injetar o arquivo
     setTimeout(() => {
       const fileMenuBtn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
       if (fileMenuBtn) {
@@ -724,7 +782,7 @@ function injectFileToWebview(filePath, fileName, mimeType) {
     return 'gemini';
   }
 
-  // ── ChatGPT: injeta direto no input[type=file] que já existe no DOM ──
+  // ── ChatGPT ──
   const isGpt = location.hostname.includes('chatgpt.com') || location.hostname.includes('chat.openai.com');
   if (isGpt) {
     const inputs = document.querySelectorAll('input[type="file"]');
@@ -735,7 +793,6 @@ function injectFileToWebview(filePath, fileName, mimeType) {
       inp.dispatchEvent(new Event('input',  { bubbles: true }));
       return 'chatgpt';
     }
-    // Fallback: drop no container principal
     const target = document.getElementById('thread-bottom-container') || document.body;
     target.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
     target.dispatchEvent(new DragEvent('dragover',  { bubbles: true, cancelable: true, dataTransfer: dt }));
@@ -743,7 +800,7 @@ function injectFileToWebview(filePath, fileName, mimeType) {
     return 'chatgpt-drop';
   }
 
-  // ── Claude: input[type=file] oculto ──
+  // ── Claude ──
   const input = document.querySelector('input[type="file"]');
   if (input) {
     Object.defineProperty(input, 'files', { value: dt.files, configurable: true });
@@ -764,7 +821,7 @@ function injectFileToWebview(filePath, fileName, mimeType) {
 })();
   `;
 
-  wv.focus(); // garante foco na webview para editor.focus() funcionar dentro dela
+  wv.focus();
   wv.executeJavaScript(script).catch(err => console.error('inject error', err));
 }
 
@@ -786,7 +843,6 @@ dragOverlay.addEventListener('dragover', (e) => {
 });
 
 dragOverlay.addEventListener('dragleave', (e) => {
-  // só esconde se saiu de vez (não entrou num filho)
   if (!dragOverlay.contains(e.relatedTarget)) hideDragOverlay();
 });
 
@@ -801,8 +857,6 @@ dragOverlay.addEventListener('drop', (e) => {
     window._draggingFilePath = null;
   }
 });
-
-
 
 // ============================================================
 // FILE LIBRARY
@@ -846,7 +900,7 @@ function formatSize(bytes) {
 function addFilesToLibrary(filePaths) {
   let added = 0;
   for (const fp of filePaths) {
-    if (library.find(f => f.path === fp)) continue; // já existe
+    if (library.find(f => f.path === fp)) continue;
     try {
       const stat = fs.statSync(fp);
       library.unshift({
@@ -872,6 +926,7 @@ function renderLibrary() {
   fileList.innerHTML = '';
   if (!library.length) {
     fileList.innerHTML = '<div class="file-list-empty">Nenhum arquivo ainda</div>';
+    _syncSelectAllBtn();
     return;
   }
   for (const file of library) {
@@ -879,6 +934,10 @@ function renderLibrary() {
     item.className = 'file-item';
     item.draggable = true;
     item.dataset.path = file.path;
+
+    // Mantém seleção ao re-renderizar
+    if (selectedFiles.has(file.path)) item.classList.add('selected');
+
     item.innerHTML = `
       <span class="file-check">✓</span>
       <span class="file-icon">${getFileIcon(file.ext)}</span>
@@ -889,19 +948,15 @@ function renderLibrary() {
       <button class="file-del" title="Remover da biblioteca">×</button>
     `;
 
-    // Clique = toggle seleção
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('file-del')) return;
       toggleSelect(file.path, item);
     });
 
-    // Guarda o path sendo arrastado para injetar na webview ao soltar
     item.addEventListener('dragstart', (e) => {
       e.dataTransfer.effectAllowed = 'copy';
       e.dataTransfer.setData('text/plain', file.path);
-      // Se há selecionados, arrasta todos; senão, só este
       if (selectedFiles.size > 0 && !selectedFiles.has(file.path)) {
-        // arrasta só este se não estava selecionado
         window._draggingFiles = [{ path: file.path, name: file.name, mime: getMimeType(file.ext) }];
       } else if (selectedFiles.size > 0) {
         window._draggingFiles = library
@@ -910,7 +965,6 @@ function renderLibrary() {
       } else {
         window._draggingFiles = [{ path: file.path, name: file.name, mime: getMimeType(file.ext) }];
       }
-      // Compat com código antigo
       window._draggingFilePath = window._draggingFiles[0].path;
       window._draggingFileName = window._draggingFiles[0].name;
       window._draggingFileMime = window._draggingFiles[0].mime;
@@ -928,6 +982,7 @@ function renderLibrary() {
 
     fileList.appendChild(item);
   }
+  _syncSelectAllBtn();
 }
 
 // Drop zone — aceita arquivos arrastados de fora do app
@@ -962,7 +1017,6 @@ function showCtxMenu(e, id) {
   const tab = tabs.find(t => t.id === id);
   const isGrouped = tab && (tab.groupId !== null && tab.groupId !== undefined);
   document.getElementById('ctx-color').style.display = isGrouped ? 'none' : '';
-  // Atualiza label do botão de limite
   const isLimited = tab && tab.tabEl.classList.contains('credits-out');
   document.getElementById('ctx-toggle-limit').textContent = isLimited
     ? '✅ Desmarcar limite'
@@ -976,7 +1030,6 @@ function hideCtxMenu() { ctxMenu.classList.remove('open'); }
 
 document.addEventListener('click', hideCtxMenu);
 document.addEventListener('contextmenu', (e) => {
-  // Se não clicou numa aba, fecha o menu
   if (!e.target.closest('.tab')) hideCtxMenu();
 });
 
@@ -985,7 +1038,6 @@ document.getElementById('ctx-color').addEventListener('click', () => {
   if (ctxTabId === null) return;
   const tab = tabs.find(t => t.id === ctxTabId);
   if (!tab) return;
-  // Abre color picker na posição da aba
   const rect = tab.tabEl.getBoundingClientRect();
   colorPicker.style.left = rect.left + 'px';
   colorPicker.style.top  = rect.bottom + 'px';
@@ -1021,7 +1073,6 @@ document.getElementById('ctx-toggle-limit').addEventListener('click', () => {
   if (!tab) return;
   const isLimited = tab.tabEl.classList.contains('credits-out');
   if (isLimited) {
-    // Desmarca
     tab.tabEl.classList.remove('credits-out');
     tab.tabEl.classList.add('credits-ok');
     const countdownEl = tab.tabEl.querySelector('.tab-countdown');
@@ -1032,7 +1083,6 @@ document.getElementById('ctx-toggle-limit').addEventListener('click', () => {
       delete creditTimers[ctxTabId];
     }
   } else {
-    // Marca como limitado (sem countdown — manual)
     tab.tabEl.classList.remove('credits-ok');
     tab.tabEl.classList.add('credits-out');
   }
@@ -1041,8 +1091,7 @@ document.getElementById('ctx-toggle-limit').addEventListener('click', () => {
 function applyTabColor(tabId, color) {
   const tab = tabs.find(t => t.id === tabId);
   if (!tab) return;
-  tab.color = color; // sempre salva a cor individual
-  // Só aplica visualmente se a aba NÃO estiver num grupo
+  tab.color = color;
   if (tab.groupId !== null && tab.groupId !== undefined) return;
   _renderTabColor(tab, color);
 }
@@ -1058,7 +1107,6 @@ function _renderTabColor(tab, color) {
 }
 
 function clearTabColor(tab) {
-  // Remove cor visual (passa para padrão do sistema/grupo)
   tab.tabEl.style.removeProperty('--tab-color');
   tab.tabEl.style.borderColor = '';
   const dot = tab.tabEl.querySelector('.tab-dot');
@@ -1066,7 +1114,6 @@ function clearTabColor(tab) {
 }
 
 function restoreTabColor(tab) {
-  // Reaplica cor individual salva (ao desagrupar)
   if (tab.color) _renderTabColor(tab, tab.color);
   else clearTabColor(tab);
 }
@@ -1106,16 +1153,14 @@ function restoreTabs() {
     if (!data.tabs || !data.tabs.length) { createTab(); return; }
     const savedCounter = data.counter || 0;
     groupCounter = data.groupCounter || 0;
-    tabCounter = 0; // será ignorado pois restore passa o id explícito
+    tabCounter = 0;
     for (const t of data.tabs) createTab(t);
-    tabCounter = savedCounter; // garante que novas abas não conflitem
-    // Restore groups
+    tabCounter = savedCounter;
     if (data.groups && data.groups.length) {
       for (const g of data.groups) {
         groups.push({ ...g });
         groupCounter = Math.max(groupCounter, g.id);
       }
-      // Rebuild DOM for groups
       rebuildTabbarFromState();
     }
     const toActivate = data.activeId || (tabs.length ? tabs[tabs.length - 1].id : null);
@@ -1132,15 +1177,12 @@ function injectCreditObserver(webview) {
     (function() {
       if (window.__creditObserver) window.__creditObserver.disconnect();
 
-      // Preserva resetTime já capturado entre reloads
       if (!window.__creditResetTime) window.__creditResetTime = null;
       if (typeof window.__creditLimited === 'undefined') window.__creditLimited = false;
 
       function extractResetTime(text) {
-        // Pega todos os matches HH:MM e retorna o de maior hora (evita pegar "6:12" quando é "18:12")
         const matches = [...text.matchAll(/\\b(\\d{1,2}):(\\d{2})\\b/g)];
         if (!matches.length) return null;
-        // Prefere horários >= 12 (tarde/noite), senão pega o maior
         const times = matches.map(m => ({ str: m[0], h: parseInt(m[1]), m: parseInt(m[2]) }));
         const afternoon = times.filter(t => t.h >= 12);
         const pool = afternoon.length ? afternoon : times;
@@ -1149,9 +1191,7 @@ function injectCreditObserver(webview) {
       }
 
       function isCreditLimitReached() {
-        // Modal 100%
         if (document.querySelector('[role="dialog"]')) return true;
-        // Alert band "sem mensagens" ou "limite"
         const band = document.querySelector('[data-alert-band-wrapper]');
         if (band) {
           const t = band.textContent;
@@ -1161,7 +1201,6 @@ function injectCreditObserver(webview) {
       }
 
       function isTyping() {
-        // Durante streaming o viewBox é "0 0 100 N" onde N > 100
         const svgs = document.querySelectorAll('.text-accent-brand svg');
         for (const svg of svgs) {
           const vb = svg.getAttribute('viewBox') || '';
@@ -1171,7 +1210,6 @@ function injectCreditObserver(webview) {
       }
 
       function check(addedNodes) {
-        // Tenta capturar resetTime do toast IMEDIATAMENTE quando ele aparece
         if (addedNodes) {
           addedNodes.forEach(node => {
             if (!node.textContent) return;
@@ -1198,7 +1236,6 @@ function injectCreditObserver(webview) {
         window.__claudeTyping = typing;
       }
 
-      // Roda imediatamente ao injetar
       check(null);
 
       window.__creditObserver = new MutationObserver((mutations) => {
@@ -1226,7 +1263,6 @@ function injectCreditObserver(webview) {
 
 function generatePartition(id) { return `persist:claude-profile-${id}`; }
 
-// Mapa de cores/labels por domínio
 const AI_CONFIGS = {
   'claude.ai':          { label: 'Claude',  color: '#7c5cfc', dot: '#a78bfa' },
   'chatgpt.com':        { label: 'ChatGPT', color: '#10b981', dot: '#34d399' },
@@ -1328,18 +1364,15 @@ function createTab(restore = null, overrideUrl = null) {
 
   webview.addEventListener('did-navigate', (e) => {
     if (activeTabId === id) updateAddressBar(e.url, label);
-    // Persiste URL
     const tab = tabs.find(t => t.id === id);
     if (tab) { tab.url = e.url; saveTabs(); }
   });
   webview.addEventListener('did-navigate-in-page', (e) => {
     if (activeTabId === id) updateAddressBar(e.url, label);
-    // Persiste URL
     const tab = tabs.find(t => t.id === id);
     if (tab) { tab.url = e.url; saveTabs(); }
   });
 
-  // Intercepta drops na webview — injeta listener que armazena paths num global
   webview.addEventListener('dom-ready', () => {
     webview.executeJavaScript(`
       (function() {
@@ -1348,96 +1381,90 @@ function createTab(restore = null, overrideUrl = null) {
         window.__claudeTabsDropped = [];
         document.addEventListener('drop', function(e) {
           const files = Array.from(e.dataTransfer ? e.dataTransfer.files : []);
-          if (!files.length) return;
-          const paths = files.map(f => f.path).filter(Boolean);
-          if (paths.length) window.__claudeTabsDropped.push(...paths);
-        }, true);
+          files.forEach(f => window.__claudeTabsDropped.push(f.name));
+        });
       })();
     `).catch(() => {});
+
+    // Injeta observer de créditos apenas no Claude
+    const url = webview.getURL() || '';
+    if (url.includes('claude.ai')) {
+      injectCreditObserver(webview);
+    }
+
+    if (initColor && !initGroupId) applyTabColor(id, initColor);
   });
 
-  // Re-injeta observer a cada navegação concluída
-  webview.addEventListener('did-finish-load', () => {
-    injectCreditObserver(webview);
-  });
-
-  // Polling: verifica se houve drops recentes na webview
-  setInterval(() => {
-    if (!webview.isConnected) return;
+  // Polling de créditos
+  const creditPollInterval = setInterval(() => {
+    const tab = tabs.find(t => t.id === id);
+    if (!tab) { clearInterval(creditPollInterval); return; }
+    const url = tab.webviewEl?.getURL() || '';
+    if (!url.includes('claude.ai')) return;
     webview.executeJavaScript(`
-      (function() {
-        if (!window.__claudeTabsDropped || !window.__claudeTabsDropped.length) return null;
-        const paths = window.__claudeTabsDropped.splice(0);
-        return paths;
-      })();
-    `).then(paths => {
-      if (paths && paths.length) addFilesToLibrary(paths);
-    }).catch(() => {});
-  }, 1000);
-
-  // Polling: monitora status de crédito da webview
-  setInterval(() => {
-    if (!webview.isConnected) return;
-    webview.executeJavaScript(`
-      typeof window.__getCreditStatus === 'function' ? window.__getCreditStatus() : null
+      window.__getCreditStatus ? window.__getCreditStatus() : null
     `).then(status => {
-      if (!status) return;
-      setCreditStatus(id, status.limited, status.resetTime);
-      // Indicador de atividade
-      const tab = tabs.find(t => t.id === id);
-      if (tab) tab.tabEl.classList.toggle('typing', !!status.typing);
+      if (status) {
+        ipcRenderer.send('credit-status', { tabId: id, ...status });
+      }
     }).catch(() => {});
   }, 3000);
 
   container.appendChild(webview);
-  tabs.push({ id, label, partition, url: initUrl, color: initColor, webviewEl: webview, tabEl, groupId: initGroupId });
-  if (initColor) applyTabColor(id, initColor);
-  if (initGroupId) {
-    tabEl.classList.add('in-group');
-    const grp = groups.find(g => g.id === initGroupId);
-    if (grp && grp.collapsed) tabEl.classList.add('group-hidden');
-  }
+
+  const tab = {
+    id, label, partition, tabEl, webviewEl: webview,
+    url: initUrl,
+    color: initColor,
+    groupId: initGroupId,
+  };
+  tabs.push(tab);
+
   setupTabDrag(tabEl, id);
-  if (!restore) activateTab(id);
-  if (!restore) tabbar.scrollLeft = tabbar.scrollWidth;
-  saveTabs();
+
+  if (!restore) {
+    activateTab(id);
+    saveTabs();
+  }
+
+  return tab;
 }
 
 // ============================================================
-// CREDIT LIMIT MONITOR
+// CREDIT TIMERS
 // ============================================================
 
-// tabId → { timer, countdownInterval, resetTime }
 const creditTimers = {};
 
-function setCreditStatus(tabId, limited, resetTime) {
+ipcRenderer.on('credit-status', (_event, { tabId, limited, resetTime, typing }) => {
   const tab = tabs.find(t => t.id === tabId);
   if (!tab) return;
 
-  if (limited) {
-    tab.tabEl.classList.remove('credits-ok');
-    tab.tabEl.classList.add('credits-out');
+  tab.tabEl.classList.toggle('typing', !!typing);
 
-    // Agenda refresh + inicia countdown se tiver horário e ainda não agendou
-    if (resetTime && !creditTimers[tabId]) {
-      const ms = msUntilTime(resetTime);
-      if (ms > 0) {
-        // Refresh timer
+  if (limited) {
+    if (!tab.tabEl.classList.contains('credits-out')) {
+      tab.tabEl.classList.remove('credits-ok');
+      tab.tabEl.classList.add('credits-out');
+
+      if (resetTime && !creditTimers[tabId]) {
+        const ms = msUntilTime(resetTime);
+        const countdownEl = tab.tabEl.querySelector('.tab-countdown');
+
         const refreshTimer = setTimeout(() => {
+          tab.tabEl.classList.remove('credits-out');
+          tab.tabEl.classList.add('credits-ok');
+          if (countdownEl) countdownEl.style.display = 'none';
           if (creditTimers[tabId]) {
             clearInterval(creditTimers[tabId].countdownInterval);
             delete creditTimers[tabId];
           }
-          const t = tabs.find(t => t.id === tabId);
-          if (t && t.webviewEl.isConnected) t.webviewEl.reload();
-        }, ms + 5000);
+          tab.webviewEl.executeJavaScript('window.__resetCreditStatus && window.__resetCreditStatus()').catch(() => {});
+        }, ms);
 
-        // Countdown interval
-        const countdownEl = tab.tabEl.querySelector('.tab-countdown');
         function tickCountdown() {
-          const remaining = msUntilTime(resetTime) + 5000;
-          if (remaining <= 0) { if (countdownEl) countdownEl.style.display = 'none'; return; }
-          const totalSec = Math.floor(remaining / 1000);
+          const remaining = msUntilTime(resetTime);
+          const totalSec  = Math.max(0, Math.floor(remaining / 1000));
           const h = Math.floor(totalSec / 3600);
           const m = Math.floor((totalSec % 3600) / 60);
           const s = totalSec % 60;
@@ -1453,7 +1480,6 @@ function setCreditStatus(tabId, limited, resetTime) {
       }
     }
   } else {
-    // Crédito liberado
     tab.tabEl.classList.remove('credits-out');
     tab.tabEl.classList.add('credits-ok');
     const countdownEl = tab.tabEl.querySelector('.tab-countdown');
@@ -1464,15 +1490,14 @@ function setCreditStatus(tabId, limited, resetTime) {
       delete creditTimers[tabId];
     }
   }
-}
+});
 
 function msUntilTime(timeStr) {
-  // timeStr = "HH:MM"
   const [h, m] = timeStr.split(':').map(Number);
   const now  = new Date();
   const target = new Date();
   target.setHours(h, m, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1); // próximo dia
+  if (target <= now) target.setDate(target.getDate() + 1);
   return target - now;
 }
 
@@ -1501,17 +1526,12 @@ function closeTab(id) {
   if (idx === -1) return;
   const tab = tabs[idx];
 
-  // Se está num grupo, usa _detachTabFromWrapper para limpeza correta
-  // (inclui dissolução do grupo se restar 1 aba, remoção do wrapper se restar 0)
   if (tab.groupId !== null && tab.groupId !== undefined) {
     _detachTabFromWrapper(tab);
-    // _detachTabFromWrapper já atualiza groups[] e remove o wrapper se necessário
-    // O tabEl foi movido de volta pro tabbar; agora remove de vez
   }
 
   tab.tabEl.remove();
   tab.webviewEl.remove();
-  // Atualiza tabs[] (pode ter sido reordenado pelo _detach)
   const newIdx = tabs.findIndex(t => t.id === id);
   if (newIdx !== -1) tabs.splice(newIdx, 1);
 
@@ -1551,16 +1571,15 @@ const dropIndicator = document.getElementById('tab-drop-indicator');
 const groupCtxMenu  = document.getElementById('group-ctx-menu');
 const groupColorPicker = document.getElementById('group-color-picker');
 
-let dragTabId        = null; // id of tab being dragged
-let dragGroupId      = null; // id of group wrapper being dragged
-let dragOverTabId    = null; // id of tab currently hovered (for grouping)
-let dropPosition     = null; // { afterId, beforeId } for reordering
-let ctxGroupId       = null; // id of group in right-click menu
-let groupHoverTimer  = null; // timer to differentiate group-drop vs reorder
+let dragTabId        = null;
+let dragGroupId      = null;
+let dragOverTabId    = null;
+let dropPosition     = null;
+let ctxGroupId       = null;
+let groupHoverTimer  = null;
 
-const GROUP_HOVER_MS = 600; // ms segurando sobre a aba para ativar modo "agrupar"
+const GROUP_HOVER_MS = 600;
 
-// ── Debug overlay ──────────────────────────────────────────────
 const _dbg = document.createElement('div');
 _dbg.style.cssText = `
   position:fixed; bottom:12px; left:12px; z-index:99999;
@@ -1579,7 +1598,6 @@ function dbg(msg) {
   _dbg.textContent = _dbgLines.join('\n');
 }
 function dbgClear() { _dbgLines = []; _dbg.style.display = 'none'; }
-// ──────────────────────────────────────────────────────────────
 
 function setupTabDrag(tabEl, tabId) {
   tabEl.addEventListener('dragstart', (e) => {
@@ -1589,239 +1607,147 @@ function setupTabDrag(tabEl, tabId) {
     dragTabId = tabId;
     const tab = tabs.find(t => t.id === tabId);
     dbg(`dragstart tab:${tabId} groupId:${tab?.groupId ?? 'none'}`);
+    tabEl.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(tabId));
-    setTimeout(() => tabEl.classList.add('dragging'), 0);
   });
 
-  tabEl.addEventListener('dragend', (e) => {
-    const effect = e.dataTransfer.dropEffect;
-    dbg(`dragend tab:${tabId} dropEffect:${effect}`);
+  tabEl.addEventListener('dragend', () => {
     tabEl.classList.remove('dragging');
     dragTabId = null;
     dragOverTabId = null;
-    clearGroupHoverTimer();
-    clearAllGroupHighlights();
-    hideDropIndicator();
-    // Se o drop foi cancelado (none = dropped fora de zona válida),
-    // garantir que a aba continua funcional — não precisa fazer nada extra
-    // pois não movemos nada, apenas limpamos estado
-    setTimeout(dbgClear, 3000);
+    dragGroupId = null;
+    clearHoverTimer();
+    dropIndicator.classList.remove('visible');
+    document.querySelectorAll('.tab.drag-over-group').forEach(t => t.classList.remove('drag-over-group'));
+    dbgClear();
   });
 
   tabEl.addEventListener('dragover', (e) => {
+    if (!dragTabId && !dragGroupId) return;
     e.preventDefault();
-    if (window._draggingFilePath) return;
-
-    // ── Grupo sendo reposicionado ──
-    if (dragGroupId !== null) {
-      const rect   = tabEl.getBoundingClientRect();
-      const isLeft = e.clientX < rect.left + rect.width / 2;
-      showDropIndicator(isLeft ? rect.left - 1 : rect.right - 1);
-      e.dataTransfer.dropEffect = 'move';
-      return;
-    }
-
-    if (dragTabId === null || dragTabId === tabId) return;
-
-    const rect   = tabEl.getBoundingClientRect();
-    const isLeft = e.clientX < rect.left + rect.width / 2;
-
-    if (dragOverTabId !== tabId) {
-      clearGroupHoverTimer();
-      clearAllGroupHighlights();
-      dragOverTabId = tabId;
-      groupHoverTimer = setTimeout(() => {
-        hideDropIndicator();
-        tabEl.classList.add('drag-over-group');
-      }, GROUP_HOVER_MS);
-    }
-
-    if (!tabEl.classList.contains('drag-over-group')) {
-      showDropIndicator(isLeft ? rect.left - 1 : rect.right - 1);
-    }
     e.dataTransfer.dropEffect = 'move';
+
+    if (dragTabId === tabId) return;
+
+    const rect = tabEl.getBoundingClientRect();
+    const mid  = rect.left + rect.width / 2;
+
+    if (dragTabId !== null) {
+      if (dragOverTabId !== tabId) {
+        dragOverTabId = tabId;
+        startHoverTimer(tabId);
+      }
+      const placement = e.clientX < mid ? 'before' : 'after';
+      const indicatorX = placement === 'before' ? rect.left - 2 : rect.right - 2;
+      dropIndicator.style.left = indicatorX + 'px';
+      dropIndicator.style.top  = rect.top + 'px';
+      dropIndicator.style.height = rect.height + 'px';
+      dropIndicator.classList.add('visible');
+    }
   });
 
   tabEl.addEventListener('dragleave', (e) => {
-    if (!tabEl.contains(e.relatedTarget)) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
       if (dragOverTabId === tabId) {
-        tabEl.classList.remove('drag-over-group');
         dragOverTabId = null;
-        clearGroupHoverTimer();
-        hideDropIndicator();
+        clearHoverTimer();
+        tabEl.classList.remove('drag-over-group');
       }
     }
   });
 
   tabEl.addEventListener('drop', (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (window._draggingFilePath) return;
-    dbg(`tab.drop on:${tabId} dragTabId:${dragTabId} dragGroupId:${dragGroupId} groupMode:${tabEl.classList.contains('drag-over-group')}`);
+    dropIndicator.classList.remove('visible');
+    clearHoverTimer();
 
-    // ── Drop de grupo sobre aba ──
     if (dragGroupId !== null) {
-      const rect   = tabEl.getBoundingClientRect();
-      const isLeft = e.clientX < rect.left + rect.width / 2;
-      reorderGroup(dragGroupId, tabId, isLeft ? 'before' : 'after');
-      hideDropIndicator();
+      const rect = tabEl.getBoundingClientRect();
+      const mid  = rect.left + rect.width / 2;
+      const placement = e.clientX < mid ? 'before' : 'after';
+      reorderGroup(dragGroupId, tabId, placement);
       dragGroupId = null;
       return;
     }
 
     if (dragTabId === null || dragTabId === tabId) return;
 
-    const targetTabObj = tabs.find(t => t.id === tabId);
-
-    if (tabEl.classList.contains('drag-over-group')) {
+    const targetTab = tabs.find(t => t.id === tabId);
+    if (tabEl.classList.contains('drag-over-group') && targetTab) {
+      tabEl.classList.remove('drag-over-group');
       groupTabs(dragTabId, tabId);
-    } else if (targetTabObj && targetTabObj.groupId != null) {
-      // Soltou sobre uma aba dentro de um grupo → entra no grupo
-      const dragTabObj = tabs.find(t => t.id === dragTabId);
-      if (!dragTabObj || dragTabObj.groupId !== targetTabObj.groupId) {
-        addTabToGroup(dragTabId, targetTabObj.groupId);
-      } else {
-        // Já está no mesmo grupo → só reordena dentro do wrapper
-        const rect   = tabEl.getBoundingClientRect();
-        const isLeft = e.clientX < rect.left + rect.width / 2;
-        const tabsArea = tabEl.closest('.tab-group-tabs');
-        if (tabsArea) {
-          if (isLeft) tabsArea.insertBefore(dragTabObj.tabEl, tabEl);
-          else tabsArea.insertBefore(dragTabObj.tabEl, tabEl.nextSibling);
-          syncTabsArrayToDom(); saveTabs();
-        }
-      }
     } else {
-      const rect   = tabEl.getBoundingClientRect();
-      const isLeft = e.clientX < rect.left + rect.width / 2;
-      reorderTab(dragTabId, tabId, isLeft ? 'before' : 'after');
+      const rect = tabEl.getBoundingClientRect();
+      const mid  = rect.left + rect.width / 2;
+      const placement = e.clientX < mid ? 'before' : 'after';
+      reorderTab(dragTabId, tabId, placement);
     }
-
-    clearAllGroupHighlights();
-    hideDropIndicator();
-    dragOverTabId = null;
-    clearGroupHoverTimer();
+    dragTabId = null;
   });
 }
 
-// Drag over tabbar background
-tabbar.addEventListener('dragover', (e) => {
-  if (window._draggingFilePath) return;
-  if (dragTabId === null && dragGroupId === null) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  dbg(`tabbar.dragover x:${e.clientX} target:${e.target.className}`);
-
-  const children = Array.from(tabbar.children).filter(el =>
-    !el.classList.contains('tab-drop-indicator') && el !== btnNewTab
-  );
-  let indicatorX = btnNewTab.getBoundingClientRect().left - 2;
-  for (const child of children) {
-    const rect = child.getBoundingClientRect();
-    if (e.clientX < rect.left + rect.width / 2) {
-      indicatorX = rect.left - 1;
-      break;
-    }
-  }
-  showDropIndicator(indicatorX);
-});
-
-tabbar.addEventListener('drop', (e) => {
-  if (window._draggingFilePath) return;
-  e.preventDefault();
-  dbg(`tabbar.drop x:${e.clientX} dragTabId:${dragTabId} dragGroupId:${dragGroupId}`);
-
-  if (dragGroupId !== null) {
-    _reorderGroupAtX(dragGroupId, e.clientX);
-    dragGroupId = null;
-  } else if (dragTabId !== null) {
-    _reorderTabAtX(dragTabId, e.clientX);
-  }
-
-  clearAllGroupHighlights();
-  hideDropIndicator();
-});
-
-// Reposiciona uma aba no tabbar baseado na posição X do cursor
-function _reorderTabAtX(tabId, x) {
-  const dragTab = tabs.find(t => t.id === tabId);
-  if (!dragTab) return;
-
-  // Coleta todos os elementos filhos diretos do tabbar (exceto o próprio tabEl e o indicador)
-  const children = Array.from(tabbar.children).filter(el =>
-    el !== dragTab.tabEl &&
-    !el.classList.contains('tab-drop-indicator') &&
-    el !== btnNewTab
-  );
-
-  let insertBefore = btnNewTab; // default: vai pro final
-  for (const child of children) {
-    const rect = child.getBoundingClientRect();
-    const mid  = rect.left + rect.width / 2;
-    if (x < mid) { insertBefore = child; break; }
-  }
-
-  // Se estava num grupo, desagrupa
-  if (dragTab.groupId != null) {
-    _detachTabFromWrapper(dragTab);
-    restoreTabColor(dragTab);
-  }
-
-  tabbar.insertBefore(dragTab.tabEl, insertBefore);
-  syncTabsArrayToDom();
-  saveTabs();
+function startHoverTimer(tabId) {
+  clearHoverTimer();
+  groupHoverTimer = setTimeout(() => {
+    const tabEl = tabs.find(t => t.id === tabId)?.tabEl;
+    if (tabEl) tabEl.classList.add('drag-over-group');
+  }, GROUP_HOVER_MS);
 }
 
-// Reposiciona um grupo no tabbar baseado na posição X do cursor
-function _reorderGroupAtX(grpId, x) {
-  const wrapper = getGroupWrapper(grpId);
-  if (!wrapper) return;
-
-  const children = Array.from(tabbar.children).filter(el =>
-    el !== wrapper &&
-    !el.classList.contains('tab-drop-indicator') &&
-    el !== btnNewTab
-  );
-
-  let insertBefore = btnNewTab;
-  for (const child of children) {
-    const rect = child.getBoundingClientRect();
-    const mid  = rect.left + rect.width / 2;
-    if (x < mid) { insertBefore = child; break; }
-  }
-
-  tabbar.insertBefore(wrapper, insertBefore);
-  syncTabsArrayToDom();
-  saveTabs();
-}
-
-tabbar.addEventListener('dragleave', (e) => {
-  if (!tabbar.contains(e.relatedTarget)) {
-    hideDropIndicator();
-    clearAllGroupHighlights();
-  }
-});
-
-function showDropIndicator(x) {
-  const barRect = tabbar.getBoundingClientRect();
-  dropIndicator.style.left = (x - barRect.left) + 'px';
-  dropIndicator.classList.add('visible');
-}
-function hideDropIndicator() {
-  dropIndicator.classList.remove('visible');
-}
-
-function clearAllGroupHighlights() {
-  document.querySelectorAll('.tab.drag-over-group').forEach(el => el.classList.remove('drag-over-group'));
-  document.querySelectorAll('.tab-group-wrapper.drag-over-wrapper').forEach(el => el.classList.remove('drag-over-wrapper'));
-}
-
-function clearGroupHoverTimer() {
+function clearHoverTimer() {
   if (groupHoverTimer) { clearTimeout(groupHoverTimer); groupHoverTimer = null; }
 }
 
-// Reposiciona um grupo inteiro (wrapper) no tabbar
+tabbar.addEventListener('dragover', (e) => {
+  if (!dragTabId && !dragGroupId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const tabEls = [...tabbar.querySelectorAll('.tab:not(.dragging), .tab-group-wrapper:not(.dragging)')];
+  const last = tabEls[tabEls.length - 1];
+  if (!last) return;
+  const rect = last.getBoundingClientRect();
+  if (e.clientX > rect.right) {
+    dropIndicator.style.left   = (rect.right - 2) + 'px';
+    dropIndicator.style.top    = rect.top + 'px';
+    dropIndicator.style.height = rect.height + 'px';
+    dropIndicator.classList.add('visible');
+  }
+});
+
+tabbar.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropIndicator.classList.remove('visible');
+  clearHoverTimer();
+  if (dragGroupId !== null) {
+    reorderGroup(dragGroupId, null, 'end');
+    dragGroupId = null;
+    return;
+  }
+  if (dragTabId === null) return;
+  const tabEls = [...tabbar.querySelectorAll('.tab:not(.dragging), .tab-group-wrapper:not(.dragging)')];
+  const last = tabEls[tabEls.length - 1];
+  if (!last) return;
+  const rect = last.getBoundingClientRect();
+  if (e.clientX > rect.right) {
+    reorderTab(dragTabId, null, 'end');
+    dragTabId = null;
+  }
+});
+
+function syncTabsArrayToDom() {
+  const domOrder = [...tabbar.querySelectorAll('.tab:not(.in-group), .tab-group-wrapper')]
+    .flatMap(el => {
+      if (el.classList.contains('tab-group-wrapper')) {
+        const grpId = parseInt(el.dataset.groupId);
+        const grp = groups.find(g => g.id === grpId);
+        return grp ? grp.tabIds.map(tid => tabs.find(t => t.id === tid)).filter(Boolean) : [];
+      }
+      return [tabs.find(t => t.id === parseInt(el.dataset.id))].filter(Boolean);
+    });
+  tabs.splice(0, tabs.length, ...domOrder);
+}
+
 function reorderGroup(grpId, targetTabId, placement) {
   const wrapper = getGroupWrapper(grpId);
   if (!wrapper) return;
@@ -1830,9 +1756,8 @@ function reorderGroup(grpId, targetTabId, placement) {
     tabbar.insertBefore(wrapper, btnNewTab);
   } else {
     const targetTab = tabs.find(t => t.id === targetTabId);
-    if (!targetTab) return;
-    // Se o target está num grupo diferente, insere antes/depois do wrapper do target
-    const targetEl = (targetTab.groupId != null && targetTab.groupId !== grpId)
+    if (!targetTab) { syncTabsArrayToDom(); saveTabs(); return; }
+    const targetEl = targetTab.groupId != null
       ? getGroupWrapper(targetTab.groupId) || targetTab.tabEl
       : targetTab.tabEl;
     if (placement === 'before') {
@@ -1846,33 +1771,27 @@ function reorderGroup(grpId, targetTabId, placement) {
   saveTabs();
 }
 
-// Reorder tab in the DOM and in tabs array
 function reorderTab(dragId, targetId, placement) {
   const dragTab = tabs.find(t => t.id === dragId);
   if (!dragTab) return;
 
-  // Salva se estava agrupado antes de desagrupar
   const wasGrouped = dragTab.groupId != null;
 
-  // Se estava num grupo, retira do wrapper (move tabEl para tabbar)
   if (wasGrouped) {
     _detachTabFromWrapper(dragTab);
     restoreTabColor(dragTab);
   }
 
-  // Agora posiciona no lugar certo no tabbar
   if (placement === 'end' || targetId === null) {
     tabbar.insertBefore(dragTab.tabEl, btnNewTab);
   } else {
     const targetTab = tabs.find(t => t.id === targetId);
     if (!targetTab) { syncTabsArrayToDom(); saveTabs(); return; }
 
-    // Elemento de referência: se target está num grupo, usa o wrapper; senão usa o tabEl
     let targetEl;
     if (targetTab.groupId != null) {
       targetEl = getGroupWrapper(targetTab.groupId);
     }
-    // Se não achou wrapper (grupo foi dissolvido) ou target não está em grupo, usa tabEl
     if (!targetEl || !tabbar.contains(targetEl)) {
       targetEl = targetTab.tabEl;
     }
@@ -1888,260 +1807,203 @@ function reorderTab(dragId, targetId, placement) {
   saveTabs();
 }
 
-// Group two tabs together
 function groupTabs(dragId, targetId) {
   const dragTab   = tabs.find(t => t.id === dragId);
   const targetTab = tabs.find(t => t.id === targetId);
   if (!dragTab || !targetTab) return;
 
-  // Se target já pertence a um grupo, adiciona drag a esse grupo
   if (targetTab.groupId !== null && targetTab.groupId !== undefined) {
     addTabToGroup(dragId, targetTab.groupId);
     return;
   }
 
-  // Se drag já pertence a um grupo, adiciona target a esse grupo
   if (dragTab.groupId !== null && dragTab.groupId !== undefined) {
-    addTabToGroup(targetId, dragTab.groupId);
-    return;
+    _detachTabFromWrapper(dragTab);
+    restoreTabColor(dragTab);
   }
 
-  // Cria novo grupo
   groupCounter++;
   const grpId = groupCounter;
-  const colors = ['#7c5cfc', '#c084fc', '#4ade80', '#fb923c', '#f472b6', '#38bdf8', '#facc15'];
-  const color  = colors[(grpId - 1) % colors.length];
-  const grp = { id: grpId, name: `Grupo ${grpId}`, color, collapsed: false, tabIds: [targetId, dragId] };
+  const aiCfg = getAiConfig(targetTab.webviewEl?.getURL() || '');
+  const grp = {
+    id: grpId,
+    name: `grupo${grpId}`,
+    color: aiCfg?.color || '#7c5cfc',
+    collapsed: false,
+    tabIds: [targetTab.id, dragTab.id],
+  };
   groups.push(grp);
 
-  // Marca as abas
-  targetTab.groupId = grpId;
-  dragTab.groupId   = grpId;
-  clearTabColor(targetTab);
-  clearTabColor(dragTab);
+  const wrapper  = _buildGroupWrapper(grp);
+  const tabsArea = wrapper.querySelector('.tab-group-tabs');
 
-  // Cria o wrapper e insere no lugar do targetTab no tabbar
-  const wrapper = _buildGroupWrapper(grp);
   tabbar.insertBefore(wrapper, targetTab.tabEl);
 
-  // Move as duas abas para dentro do wrapper (tab-group-tabs)
-  const tabsArea = wrapper.querySelector('.tab-group-tabs');
-  tabsArea.appendChild(targetTab.tabEl);
-  tabsArea.appendChild(dragTab.tabEl);
-  targetTab.tabEl.classList.add('in-group');
-  dragTab.tabEl.classList.add('in-group');
-
-  syncTabsArrayToDom();
-  saveTabs();
-}
-
-function addTabToGroup(tabId, grpId) {
-  const grp = groups.find(g => g.id === grpId);
-  const tab = tabs.find(t => t.id === tabId);
-  if (!grp || !tab) return;
-  if (tab.groupId === grpId) return; // já está neste grupo
-
-  // Remove do grupo anterior se houver
-  if (tab.groupId !== null && tab.groupId !== undefined) {
-    _detachTabFromWrapper(tab);
-  }
-
-  tab.groupId = grpId;
-  tab.tabEl.classList.add('in-group');
-  if (grp.collapsed) tab.tabEl.classList.add('group-hidden');
-  grp.tabIds.push(tabId);
-  clearTabColor(tab);
-
-  // Adiciona no tab-group-tabs do wrapper
-  const wrapper = getGroupWrapper(grpId);
-  if (wrapper) {
-    wrapper.querySelector('.tab-group-tabs').appendChild(tab.tabEl);
-  }
+  [targetTab, dragTab].forEach(t => {
+    t.groupId = grpId;
+    t.tabEl.classList.add('in-group');
+    tabsArea.appendChild(t.tabEl);
+    clearTabColor(t);
+  });
 
   _updateWrapperDOM(grpId);
   syncTabsArrayToDom();
   saveTabs();
 }
 
-function removeTabFromAnyGroup(tabId) {
+function addTabToGroup(tabId, grpId) {
   const tab = tabs.find(t => t.id === tabId);
-  if (!tab || tab.groupId === null || tab.groupId === undefined) return;
-  _detachTabFromWrapper(tab);
-  restoreTabColor(tab);
+  const grp = groups.find(g => g.id === grpId);
+  if (!tab || !grp) return;
+
+  if (tab.groupId !== null && tab.groupId !== undefined) {
+    _detachTabFromWrapper(tab);
+    restoreTabColor(tab);
+  }
+
+  const wrapper  = getGroupWrapper(grpId);
+  const tabsArea = wrapper?.querySelector('.tab-group-tabs');
+  if (!tabsArea) return;
+
+  grp.tabIds.push(tab.id);
+  tab.groupId = grpId;
+  tab.tabEl.classList.add('in-group');
+  if (grp.collapsed) tab.tabEl.classList.add('group-hidden');
+  tabsArea.appendChild(tab.tabEl);
+  clearTabColor(tab);
+
+  syncTabsArrayToDom();
+  saveTabs();
 }
 
-// Retira a aba do wrapper sem destruir o grupo (a menos que fique vazio)
 function _detachTabFromWrapper(tab) {
   const grpId = tab.groupId;
-  const grp   = groups.find(g => g.id === grpId);
+  if (grpId === null || grpId === undefined) return;
+
+  const grp = groups.find(g => g.id === grpId);
   if (!grp) { tab.groupId = null; return; }
 
   grp.tabIds = grp.tabIds.filter(id => id !== tab.id);
   tab.groupId = null;
   tab.tabEl.classList.remove('in-group', 'group-hidden');
 
-  // Move o tabEl do wrapper para o tabbar (antes do wrapper)
   const wrapper = getGroupWrapper(grpId);
-  if (wrapper && tabbar.contains(wrapper)) {
-    tabbar.insertBefore(tab.tabEl, wrapper);
-  }
 
   if (grp.tabIds.length === 0) {
     if (wrapper) wrapper.remove();
     groups = groups.filter(g => g.id !== grpId);
   } else if (grp.tabIds.length === 1) {
-    // Dissolve o grupo — a aba restante volta ao tabbar
-    const lastTabId = grp.tabIds[0];
-    const lastTab   = tabs.find(t => t.id === lastTabId);
+    const lastTab = tabs.find(t => t.id === grp.tabIds[0]);
     if (lastTab) {
       lastTab.groupId = null;
       lastTab.tabEl.classList.remove('in-group', 'group-hidden');
-      if (wrapper && tabbar.contains(wrapper)) {
-        tabbar.insertBefore(lastTab.tabEl, wrapper);
-      }
+      if (wrapper) tabbar.insertBefore(lastTab.tabEl, wrapper);
       restoreTabColor(lastTab);
     }
     if (wrapper) wrapper.remove();
     groups = groups.filter(g => g.id !== grpId);
   } else {
-    _updateWrapperDOM(grpId);
+    if (wrapper) tabbar.insertBefore(tab.tabEl, wrapper);
   }
 }
 
-// Constrói o elemento wrapper completo para um grupo
 function _buildGroupWrapper(grp) {
   const wrapper = document.createElement('div');
   wrapper.className = 'tab-group-wrapper';
   wrapper.dataset.groupId = grp.id;
-  wrapper.style.setProperty('--group-color', grp.color);
-  wrapper.style.setProperty('--group-border', grp.color + '55');
-
-  const labelEl = document.createElement('div');
-  labelEl.className = 'tab-group-label';
-  labelEl.innerHTML = `
-    <span class="tab-group-color-dot" style="background:${grp.color};box-shadow:0 0 6px ${grp.color}88"></span>
-    <span class="tab-group-name">${grp.name}</span>
-    <span class="tab-group-chevron">▾</span>
+  wrapper.draggable = true;
+  wrapper.innerHTML = `
+    <div class="tab-group-label" title="Clique para colapsar/expandir">
+      <span class="tab-group-color-dot" style="background:${grp.color};box-shadow:0 0 6px ${grp.color}88"></span>
+      <span class="tab-group-name">${grp.name}</span>
+      <span class="tab-group-chevron">▾</span>
+    </div>
+    <div class="tab-group-sep"></div>
+    <div class="tab-group-tabs"></div>
   `;
-  labelEl.addEventListener('click', () => { if (!dragGroupId) toggleGroupCollapse(grp.id); });
-  labelEl.addEventListener('contextmenu', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    ctxGroupId = grp.id;
-    groupCtxMenu.style.left = e.clientX + 'px';
-    groupCtxMenu.style.top  = e.clientY + 'px';
-    groupCtxMenu.classList.add('open');
+
+  wrapper.querySelector('.tab-group-label').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleGroupCollapse(grp.id);
   });
 
-  // Drag do GRUPO: só o label é draggable, não o wrapper inteiro
-  // Isso evita conflito com as abas filhas
-  labelEl.draggable = true;
-  labelEl.style.cursor = 'grab';
+  wrapper.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showGroupCtxMenu(e, grp.id);
+  });
 
-  labelEl.addEventListener('dragstart', (e) => {
+  wrapper.addEventListener('dragstart', (e) => {
+    if (e.target.classList.contains('tab')) { e.stopPropagation(); return; }
     dragGroupId = grp.id;
-    dragTabId   = null;
-    dbg(`dragstart GROUP:${grp.id}`);
+    wrapper.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', 'group:' + grp.id);
-    setTimeout(() => wrapper.classList.add('dragging'), 0);
   });
-  labelEl.addEventListener('dragend', () => {
+
+  wrapper.addEventListener('dragend', () => {
     wrapper.classList.remove('dragging');
     dragGroupId = null;
-    hideDropIndicator();
-    clearAllGroupHighlights();
-    setTimeout(dbgClear, 3000);
+    dropIndicator.classList.remove('visible');
   });
-
-  const sep = document.createElement('div');
-  sep.className = 'tab-group-sep';
-
-  const tabsArea = document.createElement('div');
-  tabsArea.className = 'tab-group-tabs';
-
-  // Drag sobre o LABEL ou SEP do wrapper → adicionar ao grupo
-  // Não interferimos quando o drag está sobre uma aba filha (setupTabDrag cuida disso)
-  function isOverLabelOrSep(e) {
-    return e.target === labelEl || labelEl.contains(e.target) ||
-           e.target === sep || e.target === wrapper;
-  }
 
   wrapper.addEventListener('dragover', (e) => {
-    if (window._draggingFilePath) return;
-
-    // ── Outro grupo passando sobre este wrapper ──
+    if (!dragTabId && !dragGroupId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
     if (dragGroupId !== null && dragGroupId !== grp.id) {
-      e.preventDefault();
-      const rect   = wrapper.getBoundingClientRect();
-      const isLeft = e.clientX < rect.left + rect.width / 2;
-      showDropIndicator(isLeft ? rect.left - 1 : rect.right - 1);
-      e.dataTransfer.dropEffect = 'move';
-      return;
-    }
-
-    // ── Aba sendo arrastada sobre qualquer parte do wrapper ──
-    // SEMPRE preventDefault para não cancelar o drop
-    if (dragTabId !== null) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      dbg(`wrapper.dragover grp:${grp.id} target:${e.target.className}`);
-      if (isOverLabelOrSep(e)) {
-        wrapper.classList.add('drag-over-wrapper');
-        hideDropIndicator();
-      }
+      const rect = wrapper.getBoundingClientRect();
+      const mid  = rect.left + rect.width / 2;
+      const placement = e.clientX < mid ? 'before' : 'after';
+      const indicatorX = placement === 'before' ? rect.left - 2 : rect.right - 2;
+      dropIndicator.style.left   = indicatorX + 'px';
+      dropIndicator.style.top    = rect.top + 'px';
+      dropIndicator.style.height = rect.height + 'px';
+      dropIndicator.classList.add('visible');
+    } else if (dragTabId !== null) {
+      wrapper.classList.add('drag-over-wrapper');
     }
   });
+
   wrapper.addEventListener('dragleave', (e) => {
     if (!wrapper.contains(e.relatedTarget)) {
       wrapper.classList.remove('drag-over-wrapper');
-      hideDropIndicator();
+      dropIndicator.classList.remove('visible');
     }
   });
-  wrapper.addEventListener('drop', (e) => {
-    wrapper.classList.remove('drag-over-wrapper');
-    if (window._draggingFilePath) return;
 
-    // ── Outro grupo sendo solto sobre este wrapper ──
+  wrapper.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    wrapper.classList.remove('drag-over-wrapper');
+    dropIndicator.classList.remove('visible');
+    clearHoverTimer();
+
     if (dragGroupId !== null && dragGroupId !== grp.id) {
-      e.preventDefault();
-      const rect   = wrapper.getBoundingClientRect();
-      const isLeft = e.clientX < rect.left + rect.width / 2;
-      reorderGroup(dragGroupId, null, 'end'); // fallback, posição calculada abaixo
-      // Reposição precisa: insere antes ou depois deste wrapper
-      const dragWrapper = getGroupWrapper(dragGroupId);
-      if (dragWrapper) {
-        if (isLeft) tabbar.insertBefore(dragWrapper, wrapper);
-        else tabbar.insertBefore(dragWrapper, wrapper.nextSibling);
-      }
-      syncTabsArrayToDom();
-      saveTabs();
-      hideDropIndicator();
+      const rect = wrapper.getBoundingClientRect();
+      const mid  = rect.left + rect.width / 2;
+      const placement = e.clientX < mid ? 'before' : 'after';
+      const firstTabId = grp.tabIds[0];
+      reorderGroup(dragGroupId, firstTabId, placement);
       dragGroupId = null;
       return;
     }
 
-    if (dragTabId === null) return;
-    if (!isOverLabelOrSep(e)) return;
-    e.preventDefault();
-    const tab = tabs.find(t => t.id === dragTabId);
-    if (tab && tab.groupId === grp.id) return;
-    addTabToGroup(dragTabId, grp.id);
+    if (dragTabId !== null) {
+      addTabToGroup(dragTabId, grp.id);
+      dragTabId = null;
+    }
   });
 
-  wrapper.appendChild(labelEl);
-  wrapper.appendChild(sep);
-  wrapper.appendChild(tabsArea);
   return wrapper;
 }
 
-// Atualiza nome, cor e estado collapsed do wrapper no DOM
 function _updateWrapperDOM(grpId) {
-  const grp = groups.find(g => g.id === grpId);
-  if (!grp) return;
   const wrapper = getGroupWrapper(grpId);
   if (!wrapper) return;
-  wrapper.style.setProperty('--group-color', grp.color);
-  wrapper.style.setProperty('--group-border', grp.color + '55');
+  const grp = groups.find(g => g.id === grpId);
+  if (!grp) return;
   wrapper.classList.toggle('collapsed', !!grp.collapsed);
   const dot  = wrapper.querySelector('.tab-group-color-dot');
   const name = wrapper.querySelector('.tab-group-name');
@@ -2152,10 +2014,9 @@ function _updateWrapperDOM(grpId) {
   if (tabsArea) tabsArea.classList.toggle('collapsed-tabs', !!grp.collapsed);
 }
 
-// Alias de compatibilidade
 function updateGroupLabel(grpId) { _updateWrapperDOM(grpId); }
-function createGroupLabelEl(grp) { return _buildGroupWrapper(grp); } // usado em rebuildTabbarFromState
-function refreshGroupTabClasses() {} // não necessário com wrapper
+function createGroupLabelEl(grp) { return _buildGroupWrapper(grp); }
+function refreshGroupTabClasses() {}
 
 function getGroupWrapper(grpId) {
   return tabbar.querySelector(`.tab-group-wrapper[data-group-id="${grpId}"]`);
@@ -2173,30 +2034,26 @@ function toggleGroupCollapse(grpId) {
   saveTabs();
 }
 
-// Rebuild tabbar a partir do estado restaurado (boot)
 function rebuildTabbarFromState() {
   for (const grp of groups) {
     if (!grp.tabIds.length) continue;
 
-    // Pega referência do elemento ancla ANTES de mover qualquer coisa
     const firstTab = tabs.find(t => t.id === grp.tabIds[0]);
     if (!firstTab) continue;
-    const anchor = firstTab.tabEl; // elemento ainda no tabbar
+    const anchor = firstTab.tabEl;
 
     const wrapper  = _buildGroupWrapper(grp);
     const tabsArea = wrapper.querySelector('.tab-group-tabs');
 
-    // Insere o wrapper no lugar da primeira aba do grupo
     tabbar.insertBefore(wrapper, anchor);
 
-    // Agora move as abas para dentro do wrapper
     for (const tid of grp.tabIds) {
       const t = tabs.find(t => t.id === tid);
       if (!t) continue;
       t.groupId = grp.id;
       t.tabEl.classList.add('in-group');
       if (grp.collapsed) t.tabEl.classList.add('group-hidden');
-      tabsArea.appendChild(t.tabEl); // tira do tabbar e coloca no wrapper
+      tabsArea.appendChild(t.tabEl);
       clearTabColor(t);
     }
 
@@ -2204,41 +2061,46 @@ function rebuildTabbarFromState() {
   }
 }
 
-// Sync the tabs[] array order to reflect current DOM order
-function syncTabsArrayToDom() {
-  const newOrder = [];
-  // Percorre todos os .tab no tabbar (incluindo dentro de wrappers)
-  tabbar.querySelectorAll('.tab').forEach(el => {
-    const id = parseInt(el.dataset.id);
-    const t  = tabs.find(t => t.id === id);
-    if (t) newOrder.push(t);
-  });
-  tabs.length = 0;
-  tabs.push(...newOrder);
-}
-
 // ============================================================
 // GROUP CONTEXT MENU
 // ============================================================
 
+function showGroupCtxMenu(e, grpId) {
+  ctxGroupId = grpId;
+  groupCtxMenu.style.left = e.clientX + 'px';
+  groupCtxMenu.style.top  = e.clientY + 'px';
+  groupCtxMenu.classList.add('open');
+}
+
 function hideGroupCtxMenu() { groupCtxMenu.classList.remove('open'); }
 
 document.addEventListener('click', hideGroupCtxMenu);
-document.addEventListener('contextmenu', (e) => {
-  if (!e.target.closest('.tab-group-wrapper')) hideGroupCtxMenu();
-});
 
 document.getElementById('gctx-rename').addEventListener('click', () => {
   hideGroupCtxMenu();
   if (ctxGroupId === null) return;
   const grp = groups.find(g => g.id === ctxGroupId);
   if (!grp) return;
-  const name = prompt('Nome do grupo:', grp.name);
-  if (name !== null && name.trim()) {
-    grp.name = name.trim();
-    updateGroupLabel(grp.id);
+  const wrapper = getGroupWrapper(ctxGroupId);
+  const nameEl  = wrapper?.querySelector('.tab-group-name');
+  if (!nameEl) return;
+  const input = document.createElement('input');
+  input.value = grp.name;
+  input.style.cssText = `
+    background:transparent; border:none; outline:none;
+    color:var(--text); font-family:'DM Mono',monospace; font-size:11px;
+    width:${nameEl.offsetWidth + 20}px; max-width:80px;
+  `;
+  nameEl.replaceWith(input);
+  input.focus(); input.select();
+  function commit() {
+    grp.name = input.value.trim() || `grupo${ctxGroupId}`;
+    input.replaceWith(nameEl);
+    nameEl.textContent = grp.name;
     saveTabs();
   }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); e.stopPropagation(); });
 });
 
 document.getElementById('gctx-color').addEventListener('click', () => {
@@ -2246,11 +2108,19 @@ document.getElementById('gctx-color').addEventListener('click', () => {
   if (ctxGroupId === null) return;
   const grp = groups.find(g => g.id === ctxGroupId);
   if (!grp) return;
+  const wrapper = getGroupWrapper(ctxGroupId);
+  const rect = wrapper ? wrapper.getBoundingClientRect() : { left: 0, bottom: 0 };
+  groupColorPicker.style.left = rect.left + 'px';
+  groupColorPicker.style.top  = rect.bottom + 'px';
   groupColorPicker.value = grp.color || '#7c5cfc';
   groupColorPicker.click();
   groupColorPicker.onchange = () => {
     grp.color = groupColorPicker.value;
-    updateGroupLabel(grp.id);
+    const dot = wrapper?.querySelector('.tab-group-color-dot');
+    if (dot) { dot.style.background = grp.color; dot.style.boxShadow = `0 0 6px ${grp.color}88`; }
+    const sep = wrapper?.querySelector('.tab-group-sep');
+    if (sep) sep.style.background = grp.color + '44';
+    wrapper?.style.setProperty('--group-color', grp.color);
     saveTabs();
   };
 });
@@ -2261,10 +2131,8 @@ document.getElementById('gctx-ungroup').addEventListener('click', () => {
   const grp = groups.find(g => g.id === ctxGroupId);
   if (!grp) return;
 
-  // Pega o wrapper antes de dissolver
   const wrapper = getGroupWrapper(ctxGroupId);
 
-  // Move todas as abas para o tabbar (antes do wrapper) e limpa estado
   const tabIds = [...grp.tabIds];
   for (const tid of tabIds) {
     const t = tabs.find(t => t.id === tid);
@@ -2277,7 +2145,6 @@ document.getElementById('gctx-ungroup').addEventListener('click', () => {
     restoreTabColor(t);
   }
 
-  // Remove wrapper e grupo
   if (wrapper) wrapper.remove();
   groups = groups.filter(g => g.id !== ctxGroupId);
   saveTabs();
@@ -2289,13 +2156,11 @@ document.getElementById('gctx-close-all').addEventListener('click', () => {
   const grp = groups.find(g => g.id === ctxGroupId);
   if (!grp) return;
 
-  // Remove o wrapper primeiro, limpa o grupo do state
   const wrapper = getGroupWrapper(ctxGroupId);
   const tabIds  = [...grp.tabIds];
   groups = groups.filter(g => g.id !== ctxGroupId);
   if (wrapper) wrapper.remove();
 
-  // Fecha cada aba sem passar pelo _detachTabFromWrapper (grupo já foi removido)
   for (const tid of tabIds) {
     const t = tabs.find(t => t.id === tid);
     if (!t) continue;
@@ -2303,7 +2168,6 @@ document.getElementById('gctx-close-all').addEventListener('click', () => {
     t.tabEl.remove();
     t.webviewEl.remove();
   }
-  // Remove do array tabs
   tabs.splice(0, tabs.length, ...tabs.filter(t => !tabIds.includes(t.id)));
 
   saveTabs();
@@ -2340,7 +2204,6 @@ document.addEventListener('keydown', (e) => {
     if (tabs[n]) activateTab(tabs[n].id);
   }
 
-  // Reload do webview ativo (redundante com globalShortcut, mas cobre edge cases)
   const isReload = e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.key === 'R');
   if (isReload) {
     e.preventDefault();
@@ -2348,7 +2211,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Função que recarrega o webview ativo
 function reloadActiveWebview(hard = false) {
   if (!activeTabId) return;
   const tab = tabs.find(t => t.id === activeTabId);
@@ -2364,8 +2226,6 @@ function reloadActiveWebview(hard = false) {
   }
 }
 
-// Recebe comando de reload vindo do processo principal (globalShortcut)
-const { ipcRenderer } = require('electron');
 ipcRenderer.on('reload-active-webview', (_event, { hard }) => {
   reloadActiveWebview(hard);
 });
