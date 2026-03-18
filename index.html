@@ -1377,6 +1377,24 @@ function createTab(restore = null, overrideUrl = null) {
   });
 
   webview.addEventListener('dom-ready', () => {
+    // Bloqueia F5 / Ctrl+R / Ctrl+Shift+R dentro do webview
+    // para não recarregar o app — o renderer trata o reload via ipcRenderer
+    webview.executeJavaScript(`
+      (function() {
+        if (window.__claudeTabsReloadBound) return;
+        window.__claudeTabsReloadBound = true;
+        document.addEventListener('keydown', function(e) {
+          const isF5         = e.key === 'F5';
+          const isCtrlR      = (e.ctrlKey || e.metaKey) && e.key === 'r' && !e.shiftKey;
+          const isCtrlShiftR = (e.ctrlKey || e.metaKey) && e.key === 'r' && e.shiftKey;
+          if (isF5 || isCtrlR || isCtrlShiftR) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, true);
+      })();
+    `).catch(() => {});
+
     webview.executeJavaScript(`
       (function() {
         if (window.__claudeTabsDropBound) return;

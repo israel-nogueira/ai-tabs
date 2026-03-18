@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -51,6 +51,20 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
 
+  // ── Intercepta F5 / Ctrl+R / Ctrl+Shift+R no nível do webContents da janela ──
+  // Isso tem prioridade sobre o renderer e impede o Electron de recarregar o app.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const isF5      = input.type === 'keyDown' && input.key === 'F5';
+    const isCtrlR   = input.type === 'keyDown' && input.key === 'r' && input.control && !input.shift;
+    const isCtrlShiftR = input.type === 'keyDown' && input.key === 'r' && input.control && input.shift;
+
+    if (isF5 || isCtrlR || isCtrlShiftR) {
+      event.preventDefault(); // bloqueia reload do app
+      const hard = isCtrlShiftR;
+      mainWindow.webContents.send('reload-active-webview', { hard });
+    }
+  });
+
   // Recolhe para bandeja em vez de fechar
   mainWindow.on('close', (e) => {
     if (!app.isQuiting) {
@@ -63,20 +77,6 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
-
-  // Intercepta F5 e Ctrl+R / Ctrl+Shift+R globalmente para repassar ao webview ativo
-  // em vez de recarregar o próprio app Electron
-  const reloadActiveWebview = (hardReload = false) => {
-    if (mainWindow) mainWindow.webContents.send('reload-active-webview', { hard: hardReload });
-  };
-
-  globalShortcut.register('F5',                        () => reloadActiveWebview(false));
-  globalShortcut.register('CommandOrControl+R',        () => reloadActiveWebview(false));
-  globalShortcut.register('CommandOrControl+Shift+R',  () => reloadActiveWebview(true));
-});
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
